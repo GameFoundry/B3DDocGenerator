@@ -91,14 +91,26 @@
 			<div id="{{ fn.anchor }}" class="member free-function{% if fn.is_internal %} internal{% endif %}">
 				<h3>{{ fn.name }}</h3>
 				<pre class="signature"><code>{{ fn.signature }}</code></pre>
-				{% if fn.doc.brief %}<p class="brief">{{ fn.doc.brief }}</p>{% endif %}
-				{% if fn.doc.description %}<div class="description">{{ render_doc_md(fn.doc.description, current_url)|safe }}</div>{% endif %}
+				{% if fn.doc.brief %}<p class="brief">{{ render_doc_inline(fn.doc.brief, current_url, fn.namespace)|safe }}</p>{% endif %}
+				{% if fn.doc.description %}<div class="description">{{ render_doc_md(fn.doc.description, current_url, fn.namespace)|safe }}</div>{% endif %}
+				{% if fn.doc.template_params %}
+					<section class="tparam-panel">
+						<h5 class="tparam-panel-title">Template parameters</h5>
+						<table class="tparam-table">
+							<tbody>
+							{% for p, desc in fn.doc.template_params %}
+								<tr><th scope="row"><code>{{ p }}</code></th><td>{{ render_doc_md(desc, current_url, fn.namespace)|safe }}</td></tr>
+							{% endfor %}
+							</tbody>
+						</table>
+					</section>
+				{% endif %}
 				{% if fn.doc.params %}
 					<dl class="params">
-					{% for p, desc in fn.doc.params %}<dt>{{ p }}</dt><dd>{{ desc }}</dd>{% endfor %}
+					{% for p, desc in fn.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url, fn.namespace)|safe }}</dd>{% endfor %}
 					</dl>
 				{% endif %}
-				{% if fn.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ fn.doc.returns }}</p>{% endif %}
+				{% if fn.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(fn.doc.returns, current_url, fn.namespace)|safe }}</p>{% endif %}
 			</div>
 			{% endif %}
 		{% endfor %}

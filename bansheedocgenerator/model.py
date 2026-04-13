@@ -26,11 +26,11 @@ class DocBlock:
 	brief: str = ""
 	description: str = ""  # Markdown body, pre-render
 	params: list[tuple[str, str]] = field(default_factory=list)  # (name, description)
+	template_params: list[tuple[str, str]] = field(default_factory=list)  # (name, description)
 	returns: str = ""
 	notes: list[str] = field(default_factory=list)
 	see_also: list[str] = field(default_factory=list)
 	copydoc_target: Optional[str] = None
-	raw: str = ""  # raw comment text for debugging/fallback
 
 
 @dataclass

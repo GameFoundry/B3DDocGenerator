@@ -10,7 +10,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markdown_it import MarkdownIt
 
 from .ir_builder import resolve_base_class, resolve_symbol
-from .model import Class, Enum, FreeFunction, Group, Manual, Site
+from .model import Class, Enum, FreeFunction, Group, Manual, Site, SymbolEntry
 from .util import relative_link, safe_anchor, warn
 
 
@@ -262,24 +262,173 @@ def _resolve_b3d_refs(html_out: str, site: Site, current_url: str) -> str:
 	return _B3D_REF_RE.sub(fn_sub, html_out)
 
 
-def _render_inline_markdown(text: str, site: Site, current_url: str) -> str:
-	"""Render a Markdown block (multi-paragraph description) to HTML and
-	rewrite @b3d:: references to links."""
+# Identifier tokens to detect in rendered comment HTML. Two branches: qualified
+# names (must contain "::"), or unqualified Capital-case tokens ≥ 3 chars
+# (typical C++ type/class convention — avoids matching common English words
+# like "It", "If", "On", "The").
+_PROSE_TOKEN_RE = re.compile(
+	r"[A-Za-z_]\w*(?:::[A-Za-z_~]\w*)+|[A-Z]\w{2,}"
+)
+
+# Tag splitter for a simple HTML tokenizer. Alternates between non-tag text
+# chunks (even indices) and tag chunks (odd indices).
+_TAG_SPLIT_RE = re.compile(r"(<[^>]*>)")
+
+
+def _resolve_symbol_in_context(
+	site: Site, name: str, context_ns: str
+) -> "SymbolEntry | None":
+	"""Symbol lookup that tries increasingly-outer namespaces for unqualified
+	names. Qualified names (containing ``::``) skip the walk and fall through
+	to the plain ``resolve_symbol`` (which already handles the implicit
+	``b3d::`` prefix)."""
+	if "::" in name:
+		return resolve_symbol(site, name)
+	if context_ns:
+		ns = context_ns
+		while ns:
+			entry = resolve_symbol(site, f"{ns}::{name}")
+			if entry is not None:
+				return entry
+			idx = ns.rfind("::")
+			if idx < 0:
+				break
+			ns = ns[:idx]
+	return resolve_symbol(site, name)
+
+
+def _linkify_prose_html(
+	html_out: str, site: Site, current_url: str, context_ns: str
+) -> str:
+	"""Walk rendered HTML and wrap resolvable identifier tokens in text nodes
+	with ``<a class="type-ref">``. Skips text inside existing anchors so we
+	never produce nested ``<a>`` elements."""
+	if not html_out:
+		return html_out
+	parts = _TAG_SPLIT_RE.split(html_out)
+	anchor_depth = 0
+	out: list[str] = []
+	for i, part in enumerate(parts):
+		if i % 2 == 1:
+			# Tag token — pass through, track <a>/</a> depth.
+			out.append(part)
+			low = part.lower()
+			if low.startswith("<a ") or low == "<a>":
+				anchor_depth += 1
+			elif low.startswith("</a"):
+				if anchor_depth > 0:
+					anchor_depth -= 1
+			continue
+		if not part or anchor_depth > 0:
+			out.append(part)
+			continue
+		# Text token: linkify identifier matches in-place.
+		last = 0
+		pieces: list[str] = []
+		for m in _PROSE_TOKEN_RE.finditer(part):
+			start, end = m.span()
+			token = m.group(0)
+			if token in _NON_SYMBOL_TOKENS:
+				continue
+			entry = _resolve_symbol_in_context(site, token, context_ns)
+			if entry is None:
+				continue
+			if start > last:
+				pieces.append(part[last:start])
+			display = _strip_b3d(token)
+			href = relative_link(current_url, entry.url)
+			pieces.append(
+				f'<a class="type-ref" href="{href}">{html.escape(display)}</a>'
+			)
+			last = end
+		if pieces:
+			pieces.append(part[last:])
+			out.append("".join(pieces))
+		else:
+			out.append(part)
+	return "".join(out)
+
+
+def _strip_common_indent(text: str) -> str:
+	"""Drop the source-alignment indent from Doxygen continuation lines.
+
+	In this codebase the first line of a Javadoc block typically has no
+	leading whitespace (it flows directly after ``@tparam Name`` / ``@param
+	name`` / ``@brief``), while every continuation line inherits tab-based
+	alignment from the source column where the first content character lives.
+	Those continuation lines end up 20+ spaces to the right, which CommonMark
+	classifies as code-block content rather than list items or prose. We
+	correct this by:
+
+	1. Expanding tabs to 4 spaces so indent math matches CommonMark's column
+	   rules exactly.
+	2. Taking the indent of the first non-blank indented line as the strip
+	   baseline (that's almost always the first bullet or continuation).
+	3. Stripping up to that many leading spaces from every subsequent line —
+	   lines that are less indented (e.g. a mid-block paragraph reset) are
+	   clamped flush-left rather than left hanging at an intermediate depth.
+	"""
+	if "\n" not in text:
+		return text
+	expanded = text.expandtabs(4)
+	lines = expanded.split("\n")
+	baseline = -1
+	for line in lines:
+		if not line.strip():
+			continue
+		stripped = line.lstrip(" ")
+		lead = len(line) - len(stripped)
+		if lead == 0:
+			continue
+		baseline = lead
+		break
+	if baseline <= 0:
+		return expanded
+	out: list[str] = []
+	for idx, line in enumerate(lines):
+		if not line.strip():
+			out.append("")
+			continue
+		stripped = line.lstrip(" ")
+		lead = len(line) - len(stripped)
+		# Paragraph reset: a non-first line whose indent dropped below the
+		# baseline signals the end of whatever list block we were in (e.g.
+		# "It must also provide..." after a bullet run). Inject a blank line
+		# so CommonMark closes the list cleanly instead of absorbing the
+		# dedented line as lazy continuation of the last bullet.
+		if idx > 0 and lead < baseline and out and out[-1] != "":
+			out.append("")
+		if lead >= baseline:
+			out.append(line[baseline:])
+		else:
+			out.append(stripped)
+	return "\n".join(out)
+
+
+def _render_inline_markdown(
+	text: str, site: Site, current_url: str, context_ns: str = ""
+) -> str:
+	"""Render a Markdown block (multi-paragraph description) to HTML, rewrite
+	``@b3d::`` references, and linkify bare identifiers in the prose."""
 	if not text:
 		return ""
 	md = MarkdownIt("commonmark", {"html": False}).enable("table")
-	html_out = md.render(text)
-	return _resolve_b3d_refs(html_out, site, current_url)
+	html_out = md.render(_strip_common_indent(text))
+	html_out = _resolve_b3d_refs(html_out, site, current_url)
+	return _linkify_prose_html(html_out, site, current_url, context_ns)
 
 
-def _render_doc_inline(text: str, site: Site, current_url: str) -> str:
+def _render_doc_inline(
+	text: str, site: Site, current_url: str, context_ns: str = ""
+) -> str:
 	"""Render a short Markdown fragment (brief, param description, return)
 	without wrapping it in a <p>, so it can sit inside existing prose."""
 	if not text:
 		return ""
 	md = MarkdownIt("commonmark", {"html": False})
-	html_out = md.renderInline(text)
-	return _resolve_b3d_refs(html_out, site, current_url)
+	html_out = md.renderInline(_strip_common_indent(text))
+	html_out = _resolve_b3d_refs(html_out, site, current_url)
+	return _linkify_prose_html(html_out, site, current_url, context_ns)
 
 
 _VIS_ORDER = ("public", "internal", "protected", "private")
@@ -406,8 +555,8 @@ def render_site(
 
 	env.globals["url_for_group"] = url_for_group
 	env.globals["relative_link"] = relative_link
-	env.globals["render_doc_md"] = lambda text, current: _render_inline_markdown(text, site, current)
-	env.globals["render_doc_inline"] = lambda text, current: _render_doc_inline(text, site, current)
+	env.globals["render_doc_md"] = lambda text, current, ns="": _render_inline_markdown(text, site, current, ns)
+	env.globals["render_doc_inline"] = lambda text, current, ns="": _render_doc_inline(text, site, current, ns)
 	env.globals["render_signature"] = lambda sig, current: _linkify_signature(sig, site, current)
 	env.globals["render_signature_plain"] = lambda sig, current: _linkify_signature(
 		_rewrite_to_trailing_return(sig), site, current, link_types=False

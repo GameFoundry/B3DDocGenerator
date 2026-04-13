@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import sys
 import time
 from pathlib import Path
@@ -10,19 +11,21 @@ from pathlib import Path
 from . import __version__
 from .asset_emitter import copy_manual_images, emit_assets
 from .config import (
+	DEFAULT_DOCGEN_JSON,
 	DEFAULT_MANUALS_DIR,
 	DEFAULT_OUTPUT_DIR,
 	DEFAULT_SOURCE_DIRS,
 	REPO_ROOT,
 )
-from .cpp_parser import parse_files
 from .group_resolver import resolve_groups
 from .ir_builder import build_ir
+from .json_parser import parse_json
 from .manual_renderer import render_manuals
 from .manual_scanner import scan_manuals
 from .api_renderer import render_site
-from .model import Site
+from .model import RawDecl, Site
 from .search_indexer import write_search_index
+from .source_scanner import scan_sources
 from .util import log, repo_relative, set_verbose, vlog
 
 
@@ -41,6 +44,47 @@ def _collect_headers(source_dirs: list[Path]) -> list[tuple[Path, str]]:
 	return out
 
 
+def _attach_scope_info(
+	raw_decls: list[RawDecl],
+	internal_ranges_by_file: dict[str, list[tuple[int, int]]],
+	group_spans_by_file: dict[str, list[tuple[str, int, int]]],
+) -> None:
+	"""Walk every RawDecl and attach its group_stack / is_internal_name_block
+	by looking its source location up in the per-file range maps built by
+	``source_scanner``."""
+	# Pre-sort the group span lists by start-line so we can bisect.
+	sorted_group_spans: dict[str, tuple[list[int], list[tuple[str, int, int]]]] = {}
+	for key, spans in group_spans_by_file.items():
+		spans_sorted = sorted(spans, key=lambda s: s[1])
+		starts = [s[1] for s in spans_sorted]
+		sorted_group_spans[key] = (starts, spans_sorted)
+
+	for raw in raw_decls:
+		if raw.location is None:
+			continue
+		file_key = raw.location.file
+		line = raw.location.line
+
+		spans_entry = sorted_group_spans.get(file_key)
+		if spans_entry is not None:
+			starts, spans_sorted = spans_entry
+			idx = bisect.bisect_right(starts, line)
+			stack: list[str] = []
+			for span_idx in range(idx):
+				name, start, end = spans_sorted[span_idx]
+				if start <= line <= end:
+					stack.append(name)
+			if stack:
+				raw.group_stack = stack
+
+		ranges = internal_ranges_by_file.get(file_key)
+		if ranges and raw.kind in ("method", "field"):
+			for start, end in ranges:
+				if start <= line <= end:
+					raw.is_internal_name_block = True
+					break
+
+
 def build_command(args: argparse.Namespace) -> int:
 	t0 = time.time()
 	set_verbose(bool(args.verbose))
@@ -50,20 +94,41 @@ def build_command(args: argparse.Namespace) -> int:
 		shutil.rmtree(output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
 
+	json_path = Path(args.json).resolve()
 	source_dirs = [Path(p).resolve() for p in args.source]
 	manuals_dir = Path(args.manuals).resolve()
 
 	log(f"BansheeDocGenerator {__version__}")
+	log(f"  docgen json: {json_path}")
 	log(f"  source dirs: {[str(p) for p in source_dirs]}")
 	log(f"  manuals:     {manuals_dir}")
 	log(f"  output:      {output_dir}")
 
-	# Phase 1: collect and parse headers
-	headers = _collect_headers(source_dirs)
-	log(f"phase 1: parsing {len(headers)} headers")
+	if not json_path.exists():
+		log(f"error: docgen JSON not found at {json_path}")
+		log("       run BansheeCodeGenerator to produce it before building docs.")
+		return 2
+
+	# Phase 1a: load declarations from the BansheeCodeGenerator JSON dump.
+	log("phase 1a: loading docgen JSON")
 	t = time.time()
-	raw_decls, group_decls = parse_files(headers)
-	log(f"  done ({time.time() - t:.1f}s): {len(raw_decls)} decls, {len(group_decls)} group refs")
+	raw_decls = parse_json(json_path)
+	log(f"  done ({time.time() - t:.1f}s): {len(raw_decls)} decls")
+
+	# Phase 1b: scan original headers for group markers and @name Internal
+	# blocks (neither survives into the JSON dump).
+	headers = _collect_headers(source_dirs)
+	log(f"phase 1b: scanning {len(headers)} headers for group/internal markers")
+	t = time.time()
+	group_decls, internal_ranges, group_spans = scan_sources(headers)
+	log(
+		f"  done ({time.time() - t:.1f}s): {len(group_decls)} group refs, "
+		f"{sum(len(v) for v in internal_ranges.values())} internal ranges across "
+		f"{len(internal_ranges)} files"
+	)
+
+	# Cross-reference: attach scope info onto the raw decls.
+	_attach_scope_info(raw_decls, internal_ranges, group_spans)
 
 	# Phase 2: resolve group taxonomy
 	log("phase 2: resolving groups")
@@ -131,10 +196,15 @@ def main(argv: list[str] | None = None) -> int:
 
 	build_ap = sub.add_parser("build", help="Generate the documentation site.")
 	build_ap.add_argument(
+		"--json",
+		default=str(DEFAULT_DOCGEN_JSON),
+		help="BansheeCodeGenerator docgen JSON file to ingest.",
+	)
+	build_ap.add_argument(
 		"--source",
 		nargs="+",
 		default=[str(p) for p in DEFAULT_SOURCE_DIRS],
-		help="One or more source directories to scan for .h headers.",
+		help="One or more source directories to scan for @defgroup / @addtogroup / @name Internal markers.",
 	)
 	build_ap.add_argument(
 		"--manuals",

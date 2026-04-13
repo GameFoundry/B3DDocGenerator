@@ -18,6 +18,10 @@ DEFAULT_MANUALS_DIR = REPO_ROOT / "Framework" / "Documentation" / "Manuals" / "d
 
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "Framework" / "Documentation" / "GeneratedSite"
 
+# Default path to the BansheeCodeGenerator docgen JSON dump. The generator
+# writes this during the build as part of its standard output artifacts.
+DEFAULT_DOCGEN_JSON = REPO_ROOT / "build" / "Generated" / "docgen.json"
+
 # Canonical group taxonomy source (every @defgroup is expected to live here).
 GROUP_TAXONOMY_FILE = REPO_ROOT / "Framework" / "Source" / "Engine" / "Core" / "B3DPrerequisites.h"
 

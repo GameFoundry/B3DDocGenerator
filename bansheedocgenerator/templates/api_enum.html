@@ -12,7 +12,7 @@
 	</nav>
 	<h1><span class="kind-label">enum</span> <code>{{ strip_b3d(enum.qualified_name) }}</code></h1>
 	{% if enum.doc.brief %}<p class="brief">{{ enum.doc.brief }}</p>{% endif %}
-	{% if enum.doc.description %}<div class="description">{{ render_doc_md(enum.doc.description, current_url)|safe }}</div>{% endif %}
+	{% if enum.doc.description %}<div class="description">{{ render_doc_md(enum.doc.description, current_url, enum.namespace)|safe }}</div>{% endif %}
 
 	<section class="enum-values">
 		<h2>Values</h2>

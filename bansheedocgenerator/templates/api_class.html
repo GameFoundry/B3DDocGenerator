@@ -18,8 +18,9 @@
 {%- endmacro -%}
 
 {#- Full member entry with docs. When base_url is set, link the header anchor
-    to the base class page instead of an in-page anchor. -#}
-{%- macro member_entry(m, current_url, base_url='') -%}
+    to the base class page instead of an in-page anchor. `ns` is the namespace
+    context used for unqualified identifier linkification in comment prose. -#}
+{%- macro member_entry(m, current_url, ns='', base_url='') -%}
 <div{% if not base_url %} id="{{ m.anchor }}"{% endif %} class="member {{ m.visibility }} {{ m.kind }}{% if base_url %} inherited{% endif %}">
 	<h4 class="member-name">
 		{%- if m.is_static %}<span class="tag">static</span>{% endif -%}
@@ -30,15 +31,27 @@
 		{%- endif -%}
 	</h4>
 	<div class="member-signature">{{ render_signature(m.signature, current_url)|safe }}</div>
-	{% if m.doc.brief %}<p class="brief">{{ render_doc_inline(m.doc.brief, current_url)|safe }}</p>{% endif %}
-	{% if m.doc.description %}<div class="description">{{ render_doc_md(m.doc.description, current_url)|safe }}</div>{% endif %}
+	{% if m.doc.brief %}<p class="brief">{{ render_doc_inline(m.doc.brief, current_url, ns)|safe }}</p>{% endif %}
+	{% if m.doc.description %}<div class="description">{{ render_doc_md(m.doc.description, current_url, ns)|safe }}</div>{% endif %}
+	{% if m.doc.template_params %}
+	<section class="tparam-panel">
+		<h5 class="tparam-panel-title">Template parameters</h5>
+		<table class="tparam-table">
+			<tbody>
+			{% for p, desc in m.doc.template_params %}
+				<tr><th scope="row"><code>{{ p }}</code></th><td>{{ render_doc_md(desc, current_url, ns)|safe }}</td></tr>
+			{% endfor %}
+			</tbody>
+		</table>
+	</section>
+	{% endif %}
 	{% if m.doc.params %}
 	<dl class="params">
-	{% for p, desc in m.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url)|safe }}</dd>{% endfor %}
+	{% for p, desc in m.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url, ns)|safe }}</dd>{% endfor %}
 	</dl>
 	{% endif %}
-	{% if m.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(m.doc.returns, current_url)|safe }}</p>{% endif %}
-	{% for n in m.doc.notes %}<p class="note"><strong>Note:</strong> {{ render_doc_inline(n, current_url)|safe }}</p>{% endfor %}
+	{% if m.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(m.doc.returns, current_url, ns)|safe }}</p>{% endif %}
+	{% for n in m.doc.notes %}<p class="note"><strong>Note:</strong> {{ render_doc_inline(n, current_url, ns)|safe }}</p>{% endfor %}
 </div>
 {%- endmacro -%}
 
@@ -106,7 +119,19 @@
 					{{ cls.doc.description }}
 				{%- endif -%}
 			{%- endset %}
-			{% if _full_desc %}<div class="description">{{ render_doc_md(_full_desc, current_url)|safe }}</div>{% endif %}
+			{% if _full_desc %}<div class="description">{{ render_doc_md(_full_desc, current_url, cls.namespace)|safe }}</div>{% endif %}
+			{% if cls.doc.template_params %}
+			<section class="tparam-panel">
+				<h2 class="tparam-panel-title">Template parameters</h2>
+				<table class="tparam-table">
+					<tbody>
+					{% for p, desc in cls.doc.template_params %}
+						<tr><th scope="row"><code>{{ p }}</code></th><td>{{ render_doc_md(desc, current_url, cls.namespace)|safe }}</td></tr>
+					{% endfor %}
+					</tbody>
+				</table>
+			</section>
+			{% endif %}
 		</header>
 
 		{% for vis in vis_order %}
@@ -116,13 +141,13 @@
 				{% if own[vis].methods %}
 				<h3 class="section-subhead">Member functions</h3>
 				<div class="member-list">
-					{% for m in own[vis].methods %}{{ member_entry(m, current_url) }}{% endfor %}
+					{% for m in own[vis].methods %}{{ member_entry(m, current_url, cls.namespace) }}{% endfor %}
 				</div>
 				{% endif %}
 				{% if own[vis].fields %}
 				<h3 class="section-subhead">Fields</h3>
 				<div class="member-list">
-					{% for m in own[vis].fields %}{{ member_entry(m, current_url) }}{% endfor %}
+					{% for m in own[vis].fields %}{{ member_entry(m, current_url, cls.namespace) }}{% endfor %}
 				</div>
 				{% endif %}
 			</section>
