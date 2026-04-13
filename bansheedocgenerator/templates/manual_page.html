@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{%- macro render_tree(nodes, active_slug) -%}
+<ul>
+	{%- for node in nodes %}
+	<li{% if node.slug and node.slug == active_slug %} class="active"{% endif %}>
+		{%- if node.slug -%}
+		<a href="{{ relative_link(current_url, 'manuals/' ~ node.slug ~ '.html') }}">{{ node.title }}</a>
+		{%- else -%}
+		<span class="manual-dir">{{ node.title }}</span>
+		{%- endif -%}
+		{%- if node.children -%}
+			{{ render_tree(node.children, active_slug) }}
+		{%- endif -%}
+	</li>
+	{%- endfor %}
+</ul>
+{%- endmacro -%}
+{% block content %}
+<div class="manual-layout">
+	<aside class="manual-sidebar">
+		<h3><a href="{{ relative_link(current_url, 'manuals/index.html') }}">Manuals</a></h3>
+		{{ render_tree(site.manual_tree, manual.slug) }}
+	</aside>
+	<article class="manual-article">
+		<h1>{{ manual.title }}</h1>
+		{{ manual.html|safe }}
+	</article>
+</div>
+{% endblock %}

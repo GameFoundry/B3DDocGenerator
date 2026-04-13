@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="api-index">
+	<h1>API Reference</h1>
+	<p>Browse by category.</p>
+	<ul class="group-tree">
+	{%- macro group_node(g) -%}
+		<li class="nav-group{% if g.is_internal %} internal{% endif %}">
+			<a href="{{ relative_link(current_url, url_for_group(g.name)) }}">{{ g.title }}</a>
+			{%- if g.description %}<span class="group-desc"> — {{ g.description }}</span>{% endif -%}
+			{% if g.children %}
+			<ul>
+				{% for child_name in g.children %}
+					{% if child_name in site.groups %}{{ group_node(site.groups[child_name]) }}{% endif %}
+				{% endfor %}
+			</ul>
+			{% endif %}
+		</li>
+	{%- endmacro -%}
+	{% for g in root_groups %}{{ group_node(g) }}{% endfor %}
+	</ul>
+</section>
+{% endblock %}

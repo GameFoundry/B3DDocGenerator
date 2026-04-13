@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="group-page{% if group.is_internal %} page-is-internal{% endif %}">
+	<nav class="crumbs">
+		<a href="{{ relative_link(current_url, 'api/index.html') }}">API</a> / <span>{{ group.title }}</span>
+	</nav>
+	<h1>{{ group.title }}</h1>
+	{% if group.description %}<p class="group-desc">{{ group.description }}</p>{% endif %}
+
+	{% if group.children %}
+	<section>
+		<h2>Subcategories</h2>
+		<ul class="group-children">
+			{% for child in group.children %}
+				{% if child in site.groups %}
+				{% set c = site.groups[child] %}
+				<li class="nav-group{% if c.is_internal %} internal{% endif %}">
+					<a href="{{ relative_link(current_url, url_for_group(c.name)) }}">{{ c.title }}</a>
+					{% if c.description %}<span class="group-desc"> — {{ c.description }}</span>{% endif %}
+				</li>
+				{% endif %}
+			{% endfor %}
+		</ul>
+	</section>
+	{% endif %}
+
+	{%- set _classes = [] -%}
+	{%- set _structs = [] -%}
+	{%- for qname in group.classes -%}
+		{%- if qname in site.classes -%}
+			{%- set cls = site.classes[qname] -%}
+			{%- if cls.kind == 'struct' -%}
+				{%- set _ = _structs.append(cls) -%}
+			{%- else -%}
+				{%- set _ = _classes.append(cls) -%}
+			{%- endif -%}
+		{%- endif -%}
+	{%- endfor %}
+
+	{% if _classes %}
+	<section>
+		<h2>Classes</h2>
+		<ul class="entity-list">
+			{% for cls in _classes %}
+			<li class="entity{% if cls.is_internal %} internal{% endif %}">
+				<code>{{ render_qname_link(cls.qualified_name, cls.url, current_url)|safe }}</code>
+				{% if cls.doc.brief %}<span class="brief">— {{ cls.doc.brief }}</span>{% endif %}
+			</li>
+			{% endfor %}
+		</ul>
+	</section>
+	{% endif %}
+
+	{% if _structs %}
+	<section>
+		<h2>Structs</h2>
+		<ul class="entity-list">
+			{% for cls in _structs %}
+			<li class="entity{% if cls.is_internal %} internal{% endif %}">
+				<code>{{ render_qname_link(cls.qualified_name, cls.url, current_url)|safe }}</code>
+				{% if cls.doc.brief %}<span class="brief">— {{ cls.doc.brief }}</span>{% endif %}
+			</li>
+			{% endfor %}
+		</ul>
+	</section>
+	{% endif %}
+
+	{% if group.enums %}
+	<section>
+		<h2>Enums</h2>
+		<ul class="entity-list">
+			{% for qname in group.enums %}
+				{% if qname in site.enums %}
+				{% set enum = site.enums[qname] %}
+				<li class="entity{% if enum.is_internal %} internal{% endif %}">
+					<code>{{ render_qname_link(enum.qualified_name, enum.url, current_url)|safe }}</code>
+					{% if enum.doc.brief %}<span class="brief">— {{ enum.doc.brief }}</span>{% endif %}
+				</li>
+				{% endif %}
+			{% endfor %}
+		</ul>
+	</section>
+	{% endif %}
+
+	{% if group.functions %}
+	<section>
+		<h2>Free functions</h2>
+		{% for key in group.functions %}
+			{% if key in site.functions %}
+			{% set fn = site.functions[key] %}
+			<div id="{{ fn.anchor }}" class="member free-function{% if fn.is_internal %} internal{% endif %}">
+				<h3>{{ fn.name }}</h3>
+				<pre class="signature"><code>{{ fn.signature }}</code></pre>
+				{% if fn.doc.brief %}<p class="brief">{{ fn.doc.brief }}</p>{% endif %}
+				{% if fn.doc.description %}<div class="description">{{ render_doc_md(fn.doc.description, current_url)|safe }}</div>{% endif %}
+				{% if fn.doc.params %}
+					<dl class="params">
+					{% for p, desc in fn.doc.params %}<dt>{{ p }}</dt><dd>{{ desc }}</dd>{% endfor %}
+					</dl>
+				{% endif %}
+				{% if fn.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ fn.doc.returns }}</p>{% endif %}
+			</div>
+			{% endif %}
+		{% endfor %}
+	</section>
+	{% endif %}
+</article>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="enum-page{% if enum.is_internal %} page-is-internal{% endif %}">
+	<nav class="crumbs">
+		<a href="{{ relative_link(current_url, 'api/index.html') }}">API</a>
+		{% for gname in enum.group_names %}
+			{% if gname in site.groups %}
+				/ <a href="{{ relative_link(current_url, url_for_group(gname)) }}">{{ site.groups[gname].title }}</a>
+			{% endif %}
+		{% endfor %}
+		/ <span>{{ enum.name }}</span>
+	</nav>
+	<h1><span class="kind-label">enum</span> <code>{{ strip_b3d(enum.qualified_name) }}</code></h1>
+	{% if enum.doc.brief %}<p class="brief">{{ enum.doc.brief }}</p>{% endif %}
+	{% if enum.doc.description %}<div class="description">{{ render_doc_md(enum.doc.description, current_url)|safe }}</div>{% endif %}
+
+	<section class="enum-values">
+		<h2>Values</h2>
+		<table>
+			<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+			<tbody>
+			{% for v in enum.values %}
+				<tr id="val-{{ v.name }}">
+					<td><code>{{ v.name }}</code></td>
+					<td>{% if v.value %}<code>{{ v.value }}</code>{% endif %}</td>
+					<td>{% if v.doc.brief %}{{ v.doc.brief }}{% endif %}</td>
+				</tr>
+			{% endfor %}
+			</tbody>
+		</table>
+	</section>
+</article>
+{% endblock %}

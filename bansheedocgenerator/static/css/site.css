@@ -1,0 +1,460 @@
+:root {
+	--c-bg: #ffffff;
+	--c-fg: #24292e;
+	--c-muted: #6a737d;
+	--c-border: #e1e4e8;
+	--c-accent: #0366d6;
+	--c-accent-hover: #0250a2;
+	--c-code-bg: #f6f8fa;
+	--c-internal: #b36b00;
+	--c-private: #8b5cf6;
+	--c-protected: #0a8;
+	--font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	--font-mono: "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+	margin: 0;
+	padding: 0;
+	background: var(--c-bg);
+	color: var(--c-fg);
+	font-family: var(--font-body);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+a { color: var(--c-accent); text-decoration: none; }
+a:hover { text-decoration: underline; color: var(--c-accent-hover); }
+
+code, pre { font-family: var(--font-mono); font-size: 0.92em; }
+
+pre {
+	background: var(--c-code-bg);
+	border: 1px solid var(--c-border);
+	border-radius: 6px;
+	padding: 12px 16px;
+	overflow-x: auto;
+}
+
+/* highlight.js writes <code class="hljs language-xxx"> after tokenization.
+   Its theme sets its own padding/background on .hljs; reset so our <pre>
+   styling drives the frame and the theme only owns token colors. */
+pre code.hljs {
+	padding: 0;
+	background: transparent;
+}
+
+/* Header */
+.site-header {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	padding: 12px 24px;
+	border-bottom: 1px solid var(--c-border);
+	background: var(--c-bg);
+	position: sticky;
+	top: 0;
+	z-index: 10;
+}
+
+.site-title {
+	font-weight: 700;
+	color: var(--c-fg);
+	font-size: 18px;
+}
+
+.site-nav {
+	display: flex;
+	gap: 16px;
+	margin-right: auto;
+}
+
+.search-form {
+	position: relative;
+	flex: 0 0 300px;
+}
+
+#search-input {
+	width: 100%;
+	padding: 6px 10px;
+	border: 1px solid var(--c-border);
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+.search-results {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	background: var(--c-bg);
+	border: 1px solid var(--c-border);
+	border-radius: 6px;
+	max-height: 400px;
+	overflow-y: auto;
+	margin-top: 4px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.search-results a {
+	display: block;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--c-border);
+	color: var(--c-fg);
+}
+
+.search-results a:hover {
+	background: var(--c-code-bg);
+}
+
+.search-results .kind {
+	display: inline-block;
+	font-size: 11px;
+	color: var(--c-muted);
+	margin-right: 6px;
+	text-transform: uppercase;
+}
+
+.settings-btn {
+	background: transparent;
+	border: 1px solid var(--c-border);
+	border-radius: 6px;
+	padding: 4px 10px;
+	font-size: 18px;
+	cursor: pointer;
+}
+
+.settings-dialog {
+	border: 1px solid var(--c-border);
+	border-radius: 10px;
+	padding: 24px;
+	max-width: 400px;
+}
+
+.settings-dialog label { display: block; padding: 12px 0; }
+
+.site-main {
+	max-width: 1280px;
+	margin: 0 auto;
+	padding: 32px 24px;
+}
+
+/* Class pages opt out of the standard main-content width cap so the fixed
+   sidebar + content row has room to grow horizontally. */
+.site-main:has(.class-layout) {
+	max-width: none;
+	padding: 32px 24px;
+}
+
+.site-footer {
+	text-align: center;
+	padding: 24px;
+	color: var(--c-muted);
+	border-top: 1px solid var(--c-border);
+}
+
+/* Front page */
+.front-page h1 { font-size: 34px; }
+.front-intro { color: var(--c-muted); font-size: 18px; }
+.front-choices {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 24px;
+	margin-top: 32px;
+}
+.front-card {
+	display: block;
+	padding: 32px;
+	border: 1px solid var(--c-border);
+	border-radius: 10px;
+	color: var(--c-fg);
+	transition: border-color 0.2s, transform 0.2s;
+}
+.front-card:hover {
+	border-color: var(--c-accent);
+	text-decoration: none;
+	transform: translateY(-2px);
+}
+.front-card h2 { margin: 0 0 8px 0; }
+
+/* API index */
+.group-tree, .manual-tree { list-style: none; padding-left: 0; }
+.group-tree ul, .manual-tree ul { list-style: none; padding-left: 20px; }
+.group-tree li, .manual-tree li { padding: 4px 0; }
+.manual-tree .manual-dir { font-weight: 600; color: var(--c-fg); }
+
+.group-desc { color: var(--c-muted); font-size: 0.92em; }
+
+/* Group page */
+.group-page h1 { border-bottom: 1px solid var(--c-border); padding-bottom: 8px; }
+
+.entity-list { list-style: none; padding-left: 0; }
+.entity-list li { padding: 6px 0; border-bottom: 1px solid var(--c-border); }
+.entity-list .brief { color: var(--c-muted); }
+
+.crumbs { color: var(--c-muted); font-size: 13px; margin-bottom: 12px; }
+
+/* Class page */
+.class-page h1 {
+	border-bottom: 1px solid var(--c-border);
+	padding-bottom: 8px;
+	font-size: 26px;
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+.class-page h1 .kind-label {
+	font-size: 14px;
+	color: var(--c-muted);
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+.class-page h1 .class-qname {
+	font-family: var(--font-mono);
+	background: transparent;
+}
+.class-header .brief { font-size: 17px; color: var(--c-muted); margin: 12px 0; }
+.class-header .description { margin: 12px 0; }
+.class-template { font-family: var(--font-mono); font-size: 13px; color: var(--c-muted); }
+.class-bases {
+	margin: 10px 0;
+	font-family: var(--font-mono);
+	font-size: 13px;
+}
+.class-bases .label { color: var(--c-muted); margin-right: 6px; }
+
+/* Class page two-column layout: resizable sticky TOC sidebar + fixed-width
+   main content. Flex with fixed widths so the sidebar can grow without
+   shrinking the content area. */
+.class-layout {
+	display: flex;
+	align-items: flex-start;
+	--class-sidebar-width: 420px;
+	max-width: calc(var(--class-sidebar-width) + 6px + 32px + 920px);
+	margin: 0 auto;
+}
+.class-sidebar {
+	position: sticky;
+	top: 80px;
+	max-height: calc(100vh - 100px);
+	overflow-y: auto;
+	font-size: 13px;
+	padding-right: 12px;
+	width: var(--class-sidebar-width);
+	flex: 0 0 auto;
+}
+.class-resize-handle {
+	flex: 0 0 6px;
+	align-self: stretch;
+	position: sticky;
+	top: 80px;
+	height: calc(100vh - 100px);
+	cursor: col-resize;
+	background: transparent;
+	border-left: 1px solid var(--c-border);
+	transition: border-color 0.15s;
+}
+.class-resize-handle:hover,
+.class-resize-handle.dragging {
+	border-left-color: var(--c-accent);
+}
+body.resizing-sidebar { cursor: col-resize; user-select: none; }
+.class-article {
+	width: 920px;
+	flex: 0 0 920px;
+	min-width: 0;
+	margin-left: 32px;
+}
+
+/* Table of contents (sidebar) */
+.class-toc { }
+.class-toc-title {
+	font-size: 14px;
+	margin: 0 0 12px 0;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--c-border);
+	font-family: var(--font-mono);
+	color: var(--c-fg);
+	word-break: break-all;
+}
+.toc-section { margin: 14px 0; }
+.toc-section:first-of-type { margin-top: 0; }
+.toc-vis-header {
+	font-size: 12px;
+	margin: 0 0 4px 0;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--c-muted);
+	font-weight: 600;
+}
+.toc-sub {
+	font-size: 11px;
+	color: var(--c-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin: 8px 0 2px;
+	font-weight: 600;
+}
+.toc-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+.toc-row {
+	padding: 1px 0 1px 8px;
+	font-size: 12px;
+	line-height: 1.4;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.toc-row code {
+	font-family: var(--font-mono);
+	background: transparent;
+}
+.toc-link { color: var(--c-fg); text-decoration: none; }
+.toc-link:hover { color: var(--c-accent); text-decoration: underline; }
+
+.inherited-header {
+	background: linear-gradient(to right, rgba(3, 102, 214, 0.08), transparent);
+	padding: 6px 10px;
+	border-left: 3px solid var(--c-accent);
+	margin-top: 20px !important;
+}
+.members .inherited-header a { color: var(--c-accent); font-family: var(--font-mono); }
+.member.inherited {
+	opacity: 0.85;
+	background: rgba(0, 0, 0, 0.01);
+}
+.member.inherited .member-name a { color: inherit; text-decoration: none; }
+.member.inherited .member-name a:hover { text-decoration: underline; }
+
+.members {
+	margin-top: 28px;
+	padding-top: 16px;
+	border-top: 1px solid var(--c-border);
+}
+.members > h2 {
+	font-size: 22px;
+	margin: 0 0 4px 0;
+}
+.members.protected > h2::after { content: " (protected)"; color: var(--c-protected); font-size: 14px; font-weight: normal; }
+.members.private > h2::after { content: " (private)"; color: var(--c-private); font-size: 14px; font-weight: normal; }
+.members.internal > h2::after { content: " (internal)"; color: var(--c-internal); font-size: 14px; font-weight: normal; }
+
+.section-subhead {
+	font-size: 14px;
+	color: var(--c-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin: 18px 0 8px;
+	font-weight: 600;
+}
+
+.member-list {}
+.member {
+	padding: 10px 14px 12px;
+	margin: 8px 0;
+	border-left: 3px solid var(--c-border);
+	background: transparent;
+	scroll-margin-top: 70px;
+}
+.member.internal { border-left-color: var(--c-internal); }
+.member.private { border-left-color: var(--c-private); }
+.member.protected { border-left-color: var(--c-protected); }
+.member-name {
+	margin: 0 0 4px 0;
+	font-family: var(--font-mono);
+	font-size: 15px;
+	font-weight: 600;
+}
+.member-name .tag {
+	display: inline-block;
+	background: var(--c-code-bg);
+	color: var(--c-muted);
+	font-size: 11px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	margin-right: 6px;
+	text-transform: uppercase;
+}
+.member-signature {
+	font-family: var(--font-mono);
+	font-size: 13px;
+	background: var(--c-code-bg);
+	border: 1px solid var(--c-border);
+	border-radius: 4px;
+	padding: 6px 10px;
+	margin: 4px 0 8px;
+	white-space: pre-wrap;
+	overflow-x: auto;
+}
+.member-signature .kw { color: #a71d5d; }
+.member-signature a.type-ref,
+.member-signature a.type-ref:visited { color: var(--c-accent); text-decoration: none; }
+.member-signature a.type-ref:hover { text-decoration: underline; }
+.member .brief { color: var(--c-fg); }
+.member .description { color: var(--c-fg); margin-top: 6px; }
+.member .params { margin-top: 10px; }
+.member .params dt { font-family: var(--font-mono); font-weight: 600; }
+.member .params dd { margin-left: 20px; color: var(--c-muted); }
+.member .note { background: #fff8dc; padding: 8px 12px; border-left: 3px solid #e6a700; }
+
+a.type-ref, a.type-ref:visited { color: var(--c-accent); text-decoration: none; }
+a.type-ref:hover { text-decoration: underline; }
+
+.api-ref code { background: var(--c-code-bg); padding: 0 4px; border-radius: 3px; }
+.api-ref.unresolved { opacity: 0.65; }
+
+/* Manual page */
+.manual-layout {
+	display: grid;
+	grid-template-columns: 240px 1fr;
+	gap: 32px;
+	align-items: start;
+}
+.manual-sidebar {
+	position: sticky;
+	top: 80px;
+	font-size: 14px;
+}
+.manual-sidebar ul { list-style: none; padding-left: 0; }
+.manual-sidebar ul ul { padding-left: 14px; }
+.manual-sidebar li { padding: 2px 0; }
+.manual-sidebar li.active > a { font-weight: 600; color: var(--c-accent); }
+.manual-sidebar .manual-dir { font-weight: 600; color: var(--c-fg); font-size: 13px; }
+.manual-article h1 { border-bottom: 1px solid var(--c-border); padding-bottom: 8px; }
+.manual-article img { max-width: 100%; }
+
+/* Internal visibility toggle — hides protected, private, internal members
+   and any nav/entity entries marked internal unless "show-internal" is on. */
+html:not(.show-internal) .members.protected,
+html:not(.show-internal) .members.private,
+html:not(.show-internal) .members.internal,
+html:not(.show-internal) .toc-section.protected,
+html:not(.show-internal) .toc-section.private,
+html:not(.show-internal) .toc-section.internal,
+html:not(.show-internal) .nav-group.internal,
+html:not(.show-internal) .entity.internal,
+html:not(.show-internal) .inherited-members li.protected,
+html:not(.show-internal) .search-hit.internal {
+	display: none;
+}
+
+table { border-collapse: collapse; margin: 16px 0; }
+table th, table td { padding: 6px 12px; border: 1px solid var(--c-border); }
+table th { background: var(--c-code-bg); text-align: left; }
+
+@media (max-width: 768px) {
+	.front-choices { grid-template-columns: 1fr; }
+	.manual-layout { grid-template-columns: 1fr; }
+	.manual-sidebar { position: static; }
+	.class-layout { flex-direction: column; max-width: none; }
+	.class-sidebar { position: static; max-height: none; width: auto; padding-right: 0; }
+	.class-resize-handle { display: none; }
+	.class-article { width: auto; flex: 1 1 auto; margin-left: 0; }
+	.search-form { display: none; }
+}

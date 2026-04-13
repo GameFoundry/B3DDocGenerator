@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="front-page">
+	<h1>Banshee Engine Documentation</h1>
+	<p class="front-intro">A high-performance C++ game engine with an integrated editor and a C# scripting system.</p>
+	<div class="front-choices">
+		<a class="front-card" href="{{ relative_link(current_url, 'manuals/index.html') }}">
+			<h2>Manuals</h2>
+			<p>Step-by-step guides covering engine subsystems, rendering, GUI, physics, audio, scripting and more.</p>
+		</a>
+		<a class="front-card" href="{{ relative_link(current_url, 'api/index.html') }}">
+			<h2>API Reference</h2>
+			<p>Full reference for classes, structs, enums and free functions, organised by category.</p>
+		</a>
+	</div>
+</section>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{%- set vis_labels = {
+	'public': 'Public',
+	'protected': 'Protected',
+	'private': 'Private',
+	'internal': 'Internal',
+} -%}
+
+{#- A compact TOC row: signature linked to its anchor, no docs. The row is
+    itself an <a>, so type tokens must NOT be linkified (nested anchors are
+    invalid HTML and break the outer click target). -#}
+{%- macro toc_row(m, current_url, href_prefix='') -%}
+<li class="toc-row">
+	<a class="toc-link" href="{{ href_prefix ~ '#' ~ m.anchor }}">
+		<code>{{ render_signature_plain(m.signature, current_url)|safe }}</code>
+	</a>
+</li>
+{%- endmacro -%}
+
+{#- Full member entry with docs. When base_url is set, link the header anchor
+    to the base class page instead of an in-page anchor. -#}
+{%- macro member_entry(m, current_url, base_url='') -%}
+<div{% if not base_url %} id="{{ m.anchor }}"{% endif %} class="member {{ m.visibility }} {{ m.kind }}{% if base_url %} inherited{% endif %}">
+	<h4 class="member-name">
+		{%- if m.is_static %}<span class="tag">static</span>{% endif -%}
+		{%- if base_url -%}
+		<a href="{{ base_url }}#{{ m.anchor }}">{{ m.name }}</a>
+		{%- else -%}
+		{{ m.name }}
+		{%- endif -%}
+	</h4>
+	<div class="member-signature">{{ render_signature(m.signature, current_url)|safe }}</div>
+	{% if m.doc.brief %}<p class="brief">{{ render_doc_inline(m.doc.brief, current_url)|safe }}</p>{% endif %}
+	{% if m.doc.description %}<div class="description">{{ render_doc_md(m.doc.description, current_url)|safe }}</div>{% endif %}
+	{% if m.doc.params %}
+	<dl class="params">
+	{% for p, desc in m.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url)|safe }}</dd>{% endfor %}
+	</dl>
+	{% endif %}
+	{% if m.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(m.doc.returns, current_url)|safe }}</p>{% endif %}
+	{% for n in m.doc.notes %}<p class="note"><strong>Note:</strong> {{ render_doc_inline(n, current_url)|safe }}</p>{% endfor %}
+</div>
+{%- endmacro -%}
+
+{% block content %}
+<div class="class-layout{% if cls.is_internal %} page-is-internal{% endif %}">
+	<aside class="class-sidebar" id="class-sidebar">
+		<nav class="class-toc" aria-label="Class members">
+			<h3 class="class-toc-title">{{ cls.name }}</h3>
+			{% for vis in vis_order %}
+				{% if section_has_content(own[vis], inherited[vis]) %}
+				<section class="toc-section {{ vis }}">
+					<h4 class="toc-vis-header">{{ vis_labels[vis] }}</h4>
+					{% if own[vis].methods %}
+					<h5 class="toc-sub">Member functions</h5>
+					<ul class="toc-list">
+						{% for m in own[vis].methods %}{{ toc_row(m, current_url) }}{% endfor %}
+					</ul>
+					{% endif %}
+					{% if own[vis].fields %}
+					<h5 class="toc-sub">Fields</h5>
+					<ul class="toc-list">
+						{% for m in own[vis].fields %}{{ toc_row(m, current_url) }}{% endfor %}
+					</ul>
+					{% endif %}
+				</section>
+				{% endif %}
+			{% endfor %}
+		</nav>
+	</aside>
+	<div class="class-resize-handle" id="class-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
+
+	<article class="class-article">
+		<nav class="crumbs">
+			<a href="{{ relative_link(current_url, 'api/index.html') }}">API</a>
+			{% for gname in cls.group_names %}
+				{% if gname in site.groups %}
+					/ <a href="{{ relative_link(current_url, url_for_group(gname)) }}">{{ site.groups[gname].title }}</a>
+				{% endif %}
+			{% endfor %}
+			/ <span>{{ cls.name }}</span>
+		</nav>
+
+		<header class="class-header">
+			<h1>
+				<span class="kind-label">{{ cls.kind }}</span>
+				<code class="class-qname">{{ strip_b3d(cls.qualified_name) }}</code>
+			</h1>
+			{% if cls.template_params %}
+			<div class="class-template"><code>template&lt;{{ cls.template_params }}&gt;</code></div>
+			{% endif %}
+			{% if cls.bases %}
+			<div class="class-bases">
+				<span class="label">Inherits:</span>
+				{% for base in cls.bases %}
+					{{ render_type(base, current_url)|safe }}{% if not loop.last %}, {% endif %}
+				{% endfor %}
+			</div>
+			{% endif %}
+			{%- set _full_desc -%}
+				{%- if cls.doc.brief and cls.doc.description -%}
+					{{ cls.doc.brief }}{{ '\n\n' }}{{ cls.doc.description }}
+				{%- elif cls.doc.brief -%}
+					{{ cls.doc.brief }}
+				{%- elif cls.doc.description -%}
+					{{ cls.doc.description }}
+				{%- endif -%}
+			{%- endset %}
+			{% if _full_desc %}<div class="description">{{ render_doc_md(_full_desc, current_url)|safe }}</div>{% endif %}
+		</header>
+
+		{% for vis in vis_order %}
+			{% if section_has_content(own[vis], inherited[vis]) %}
+			<section class="members {{ vis }}">
+				<h2>{{ vis_labels[vis] }}</h2>
+				{% if own[vis].methods %}
+				<h3 class="section-subhead">Member functions</h3>
+				<div class="member-list">
+					{% for m in own[vis].methods %}{{ member_entry(m, current_url) }}{% endfor %}
+				</div>
+				{% endif %}
+				{% if own[vis].fields %}
+				<h3 class="section-subhead">Fields</h3>
+				<div class="member-list">
+					{% for m in own[vis].fields %}{{ member_entry(m, current_url) }}{% endfor %}
+				</div>
+				{% endif %}
+			</section>
+			{% endif %}
+		{% endfor %}
+	</article>
+</div>
+{% endblock %}

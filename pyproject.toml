@@ -1,0 +1,17 @@
+[project]
+name = "bansheedocgenerator"
+version = "0.1.0"
+description = "HTML documentation generator for the Banshee Engine."
+requires-python = ">=3.10"
+dependencies = [
+	"jinja2>=3.1",
+	"markdown-it-py>=3.0",
+	"mdit-py-plugins>=0.4",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bansheedocgenerator*"]
