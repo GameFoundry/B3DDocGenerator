@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import re
 import sys
 import time
 from pathlib import Path
@@ -40,18 +41,85 @@ def _collect_headers(source_dirs: list[Path]) -> list[tuple[Path, str]]:
 			# Skip third-party
 			if "/ThirdParty/" in rel or "/Dependencies/" in rel:
 				continue
+			# Plugin folders aren't fed to BansheeCodeGenerator for docgen yet,
+			# so scanning their @defgroup/@addtogroup markers only produces
+			# empty group pages. Ignore them here until the JSON pipeline is
+			# extended to cover plugins.
+			if "/Source/Plugins/" in rel:
+				continue
 			out.append((p, rel))
 	return out
+
+
+_PLUGIN_DEFGROUP_RE = re.compile(r"@defgroup\s+(\S+)")
+
+
+def _collect_plugin_group_names(source_dirs: list[Path]) -> set[str]:
+	"""Return the set of group names that are ``@defgroup``'d inside a plugin
+	folder. These names are what we want to suppress: a plugin defines its
+	own top-level category, and sometimes a non-plugin header adds itself
+	into that category via ``@addtogroup`` (e.g. ``GpuResourcePool`` → the
+	plugin-owned ``RenderBeast`` group). Until plugin headers are part of the
+	docgen JSON, those references should be dropped so the groups don't
+	render with a single orphan entry."""
+	names: set[str] = set()
+	for src in source_dirs:
+		if not src.exists():
+			continue
+		for p in src.rglob("*.h"):
+			rel = repo_relative(p, REPO_ROOT)
+			if "/Source/Plugins/" not in rel:
+				continue
+			try:
+				text = p.read_text(encoding="utf-8", errors="replace")
+			except OSError:
+				continue
+			for m in _PLUGIN_DEFGROUP_RE.finditer(text):
+				names.add(m.group(1))
+	return names
+
+
+def _prune_empty_groups(site: Site) -> None:
+	"""Drop groups that contain no classes, enums, or functions, recursively.
+
+	Without this, every ``@defgroup`` declaration in the scanned headers
+	produces an HTML page — including ones whose content lives in plugin
+	headers we currently exclude from parsing. The result is empty shells like
+	``api/groups/NullGpuBackend.html``. This walks the group tree bottom-up and
+	removes any node whose whole subtree has no documented content, then
+	cleans up parent children lists and the root ordering."""
+	groups = site.groups
+
+	def _is_live(name: str, visiting: set[str]) -> bool:
+		g = groups.get(name)
+		if g is None or name in visiting:
+			return False
+		if g.classes or g.enums or g.functions:
+			return True
+		visiting.add(name)
+		try:
+			return any(_is_live(child, visiting) for child in g.children)
+		finally:
+			visiting.discard(name)
+
+	dead: list[str] = [name for name in groups if not _is_live(name, set())]
+	for name in dead:
+		groups.pop(name, None)
+	for g in groups.values():
+		g.children = [c for c in g.children if c in groups]
+	site.root_group_order = [n for n in site.root_group_order if n in groups]
 
 
 def _attach_scope_info(
 	raw_decls: list[RawDecl],
 	internal_ranges_by_file: dict[str, list[tuple[int, int]]],
 	group_spans_by_file: dict[str, list[tuple[str, int, int]]],
+	suppressed_groups: set[str],
 ) -> None:
 	"""Walk every RawDecl and attach its group_stack / is_internal_name_block
 	by looking its source location up in the per-file range maps built by
-	``source_scanner``."""
+	``source_scanner``. ``suppressed_groups`` is the set of group names that
+	should be filtered out of every stack (see ``_collect_plugin_group_names``)."""
 	# Pre-sort the group span lists by start-line so we can bisect.
 	sorted_group_spans: dict[str, tuple[list[int], list[tuple[str, int, int]]]] = {}
 	for key, spans in group_spans_by_file.items():
@@ -72,7 +140,7 @@ def _attach_scope_info(
 			stack: list[str] = []
 			for span_idx in range(idx):
 				name, start, end = spans_sorted[span_idx]
-				if start <= line <= end:
+				if start <= line <= end and name not in suppressed_groups:
 					stack.append(name)
 			if stack:
 				raw.group_stack = stack
@@ -118,6 +186,7 @@ def build_command(args: argparse.Namespace) -> int:
 	# Phase 1b: scan original headers for group markers and @name Internal
 	# blocks (neither survives into the JSON dump).
 	headers = _collect_headers(source_dirs)
+	plugin_groups = _collect_plugin_group_names(source_dirs)
 	log(f"phase 1b: scanning {len(headers)} headers for group/internal markers")
 	t = time.time()
 	group_decls, internal_ranges, group_spans = scan_sources(headers)
@@ -126,9 +195,11 @@ def build_command(args: argparse.Namespace) -> int:
 		f"{sum(len(v) for v in internal_ranges.values())} internal ranges across "
 		f"{len(internal_ranges)} files"
 	)
+	if plugin_groups:
+		log(f"  suppressing {len(plugin_groups)} plugin-owned groups: {sorted(plugin_groups)}")
 
 	# Cross-reference: attach scope info onto the raw decls.
-	_attach_scope_info(raw_decls, internal_ranges, group_spans)
+	_attach_scope_info(raw_decls, internal_ranges, group_spans, plugin_groups)
 
 	# Phase 2: resolve group taxonomy
 	log("phase 2: resolving groups")
@@ -148,6 +219,13 @@ def build_command(args: argparse.Namespace) -> int:
 	site.root_manual_order = manual_order
 	build_ir(raw_decls, groups, site)
 	log(f"  {len(site.classes)} classes, {len(site.enums)} enums, {len(site.functions)} free functions")
+
+	# Remove groups whose subtree has no documented content (typically plugin
+	# categories whose headers aren't in the docgen JSON yet).
+	before = len(site.groups)
+	_prune_empty_groups(site)
+	if before != len(site.groups):
+		log(f"  pruned {before - len(site.groups)} empty groups")
 
 	# Phase 5a: render manuals (first, so headings are populated before we also use them)
 	log("phase 5a: rendering manuals")

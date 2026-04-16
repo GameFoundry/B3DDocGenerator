@@ -57,9 +57,18 @@ def _class_from_obj(obj: dict) -> RawDecl:
 
 def _member_from_obj(obj: dict) -> RawDecl:
 	kind = obj.get("kind", "method")
+	name = obj.get("name", "")
+	# Operators are all CXXMethodDecls whose name starts with ``operator``
+	# followed by a non-identifier character (so we don't catch user-defined
+	# names like ``operatorCount``).
+	is_operator = False
+	if name.startswith("operator") and len(name) >= 9:
+		is_operator = not (name[8].isalnum() or name[8] == "_")
+	elif name == "operator":
+		is_operator = True
 	return RawDecl(
 		kind=kind,
-		name=obj.get("name", ""),
+		name=name,
 		qualified_name=obj.get("qualified_name", ""),
 		signature=obj.get("signature", ""),
 		template_params=_strip_template_brackets(obj.get("template_params")),
@@ -70,6 +79,8 @@ def _member_from_obj(obj: dict) -> RawDecl:
 		is_static=bool(obj.get("is_static", False)),
 		is_virtual=bool(obj.get("is_virtual", False)),
 		is_const=bool(obj.get("is_const", False)),
+		is_constructor=bool(obj.get("is_constructor", False)),
+		is_operator=is_operator,
 		parent_class_qname=obj.get("parent_class_qname"),
 		doc=_doc_from_obj(obj.get("doc")),
 		location=_location_from_obj(obj.get("location")),
@@ -122,15 +133,34 @@ def _function_from_obj(obj: dict) -> RawDecl:
 # ---------------------------------------------------------------------------
 
 
+_DOXYGEN_MARKER_LINES = frozenset({"@", "{", "}", "@{", "@}"})
+
+
+def _strip_doxygen_markers(text: str) -> str:
+	# Clang's doc parser sometimes leaks Doxygen member-group markers (@{ / @})
+	# from constructs like `@name Internal\n@{` into the next declaration's
+	# brief/description. Drop lines that consist only of those markers, then
+	# defensively remove inline @{ / @} substrings that survived.
+	if not text:
+		return text
+	kept: list[str] = []
+	for line in text.split("\n"):
+		if line.strip() in _DOXYGEN_MARKER_LINES:
+			continue
+		kept.append(line)
+	cleaned = "\n".join(kept).replace("@{", "").replace("@}", "")
+	return cleaned.strip()
+
+
 def _doc_from_obj(obj: Optional[dict]) -> DocBlock:
 	if not obj:
 		return DocBlock()
 	return DocBlock(
-		brief=obj.get("brief", "") or "",
-		description=obj.get("description", "") or "",
-		params=[(p[0], p[1]) for p in (obj.get("params") or []) if len(p) >= 2],
-		template_params=[(p[0], p[1]) for p in (obj.get("template_params_doc") or []) if len(p) >= 2],
-		returns=obj.get("returns", "") or "",
+		brief=_strip_doxygen_markers(obj.get("brief", "") or ""),
+		description=_strip_doxygen_markers(obj.get("description", "") or ""),
+		params=[(p[0], _strip_doxygen_markers(p[1])) for p in (obj.get("params") or []) if len(p) >= 2],
+		template_params=[(p[0], _strip_doxygen_markers(p[1])) for p in (obj.get("template_params_doc") or []) if len(p) >= 2],
+		returns=_strip_doxygen_markers(obj.get("returns", "") or ""),
 		copydoc_target=obj.get("copydoc_target"),
 	)
 

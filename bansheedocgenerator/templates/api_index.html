@@ -7,7 +7,7 @@
 	{%- macro group_node(g) -%}
 		<li class="nav-group{% if g.is_internal %} internal{% endif %}">
 			<a href="{{ relative_link(current_url, url_for_group(g.name)) }}">{{ g.title }}</a>
-			{%- if g.description %}<span class="group-desc"> — {{ g.description }}</span>{% endif -%}
+			{%- if g.description %}<span class="group-desc"> — {{ render_doc_inline(g.description, current_url)|safe }}</span>{% endif -%}
 			{% if g.children %}
 			<ul>
 				{% for child_name in g.children %}

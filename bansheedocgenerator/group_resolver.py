@@ -12,10 +12,30 @@ from .config import INTERNAL_MARKER
 from .model import Group, GroupDecl
 
 
+def internal_partner_name(name: str, groups: dict[str, Group]) -> str | None:
+	"""Return the public-facing partner group name for an internal category,
+	or None if no partner exists. Matches the two affix conventions used in
+	B3DPrerequisites.h: ``Foo-Internal`` → ``Foo`` and ``Internal-Foo`` →
+	``Foo``. The match must land on a group that exists and is itself not
+	marked internal."""
+	candidate: str | None = None
+	if name.endswith("-Internal") and len(name) > len("-Internal"):
+		candidate = name[: -len("-Internal")]
+	elif name.startswith("Internal-") and len(name) > len("Internal-"):
+		candidate = name[len("Internal-") :]
+	if candidate is None:
+		return None
+	partner = groups.get(candidate)
+	if partner is None or partner.is_internal:
+		return None
+	return candidate
+
+
 def resolve_groups(group_decls: list[GroupDecl]) -> tuple[dict[str, Group], list[str]]:
 	"""Return (groups_by_name, root_group_order)."""
 	groups: dict[str, Group] = {}
 	root_order: list[str] = []
+	has_defgroup: set[str] = set()
 
 	for gd in group_decls:
 		if gd.name not in groups:
@@ -27,6 +47,7 @@ def resolve_groups(group_decls: list[GroupDecl]) -> tuple[dict[str, Group], list
 		g = groups[gd.name]
 
 		if gd.kind == "defgroup":
+			has_defgroup.add(gd.name)
 			if gd.title:
 				g.title = gd.title
 			if gd.description:
@@ -57,6 +78,26 @@ def resolve_groups(group_decls: list[GroupDecl]) -> tuple[dict[str, Group], list
 
 	for name in list(groups.keys()):
 		_mark_internal(name)
+
+	# Inherit metadata from the public partner for any internal category
+	# that was referenced via @addtogroup but never got its own @defgroup.
+	# Without this, such groups render with ``title == name`` and no
+	# hierarchy, which looks broken in the nav tree before the IR-level
+	# merge collapses them into the partner.
+	for name, g in list(groups.items()):
+		if not g.is_internal or name in has_defgroup:
+			continue
+		partner_name = internal_partner_name(name, groups)
+		if partner_name is None:
+			continue
+		partner = groups[partner_name]
+		if not g.description and partner.description:
+			g.description = partner.description
+		if g.parent is None and partner.parent:
+			g.parent = partner.parent
+			parent_group = groups.get(partner.parent)
+			if parent_group is not None and name not in parent_group.children:
+				parent_group.children.append(name)
 
 	# Any group that isn't in root_order but has no parent is a root.
 	for name, g in groups.items():

@@ -5,7 +5,7 @@
 		<a href="{{ relative_link(current_url, 'api/index.html') }}">API</a> / <span>{{ group.title }}</span>
 	</nav>
 	<h1>{{ group.title }}</h1>
-	{% if group.description %}<p class="group-desc">{{ group.description }}</p>{% endif %}
+	{% if group.description %}<p class="group-desc">{{ render_doc_inline(group.description, current_url)|safe }}</p>{% endif %}
 
 	{% if group.children %}
 	<section>
@@ -16,7 +16,7 @@
 				{% set c = site.groups[child] %}
 				<li class="nav-group{% if c.is_internal %} internal{% endif %}">
 					<a href="{{ relative_link(current_url, url_for_group(c.name)) }}">{{ c.title }}</a>
-					{% if c.description %}<span class="group-desc"> — {{ c.description }}</span>{% endif %}
+					{% if c.description %}<span class="group-desc"> — {{ render_doc_inline(c.description, current_url)|safe }}</span>{% endif %}
 				</li>
 				{% endif %}
 			{% endfor %}
@@ -25,95 +25,134 @@
 	{% endif %}
 
 	{%- set _classes = [] -%}
+	{%- set _internal_classes = [] -%}
 	{%- set _structs = [] -%}
+	{%- set _internal_structs = [] -%}
 	{%- for qname in group.classes -%}
 		{%- if qname in site.classes -%}
 			{%- set cls = site.classes[qname] -%}
 			{%- if cls.kind == 'struct' -%}
-				{%- set _ = _structs.append(cls) -%}
+				{%- if cls.is_internal -%}{%- set _ = _internal_structs.append(cls) -%}{%- else -%}{%- set _ = _structs.append(cls) -%}{%- endif -%}
 			{%- else -%}
-				{%- set _ = _classes.append(cls) -%}
+				{%- if cls.is_internal -%}{%- set _ = _internal_classes.append(cls) -%}{%- else -%}{%- set _ = _classes.append(cls) -%}{%- endif -%}
 			{%- endif -%}
 		{%- endif -%}
 	{%- endfor %}
 
-	{% if _classes %}
-	<section>
-		<h2>Classes</h2>
+	{%- set _enums = [] -%}
+	{%- set _internal_enums = [] -%}
+	{%- for qname in group.enums -%}
+		{%- if qname in site.enums -%}
+			{%- set enum = site.enums[qname] -%}
+			{%- if enum.is_internal -%}{%- set _ = _internal_enums.append(enum) -%}{%- else -%}{%- set _ = _enums.append(enum) -%}{%- endif -%}
+		{%- endif -%}
+	{%- endfor %}
+
+	{%- set _functions = [] -%}
+	{%- set _internal_functions = [] -%}
+	{%- for key in group.functions -%}
+		{%- if key in site.functions -%}
+			{%- set fn = site.functions[key] -%}
+			{%- if fn.is_internal -%}{%- set _ = _internal_functions.append(fn) -%}{%- else -%}{%- set _ = _functions.append(fn) -%}{%- endif -%}
+		{%- endif -%}
+	{%- endfor %}
+
+	{% macro render_entity_list(items) %}
 		<ul class="entity-list">
-			{% for cls in _classes %}
-			<li class="entity{% if cls.is_internal %} internal{% endif %}">
-				<code>{{ render_qname_link(cls.qualified_name, cls.url, current_url)|safe }}</code>
-				{% if cls.doc.brief %}<span class="brief">— {{ cls.doc.brief }}</span>{% endif %}
+			{% for item in items %}
+			<li class="entity{% if item.is_internal %} internal{% endif %}">
+				<code>{{ render_qname_link(item.qualified_name, item.url, current_url)|safe }}</code>
+				{% if item.doc.brief %}<span class="brief">— {{ render_doc_inline(item.doc.brief, current_url, item.namespace, item.name if item.kind in ('class', 'struct') else '')|safe }}</span>{% endif %}
 			</li>
 			{% endfor %}
 		</ul>
+	{% endmacro %}
+
+	{% macro render_free_functions(items) %}
+		{% for fn in items %}
+		<div id="{{ fn.anchor }}" class="member free-function{% if fn.is_internal %} internal{% endif %}">
+			<h3>{{ fn.name }}</h3>
+			<pre class="signature"><code>{{ fn.signature }}</code></pre>
+			{% if fn.doc.brief %}<p class="brief">{{ render_doc_inline(fn.doc.brief, current_url, fn.namespace)|safe }}</p>{% endif %}
+			{% if fn.doc.description %}<div class="description">{{ render_doc_md(fn.doc.description, current_url, fn.namespace)|safe }}</div>{% endif %}
+			{% if fn.doc.template_params %}
+				<section class="tparam-panel">
+					<h5 class="tparam-panel-title">Template parameters</h5>
+					<table class="tparam-table">
+						<tbody>
+						{% for p, desc in fn.doc.template_params %}
+							<tr><th scope="row"><code>{{ p }}</code></th><td>{{ render_doc_md(desc, current_url, fn.namespace)|safe }}</td></tr>
+						{% endfor %}
+						</tbody>
+					</table>
+				</section>
+			{% endif %}
+			{% if fn.doc.params %}
+				<dl class="params">
+				{% for p, desc in fn.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url, fn.namespace)|safe }}</dd>{% endfor %}
+				</dl>
+			{% endif %}
+			{% if fn.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(fn.doc.returns, current_url, fn.namespace)|safe }}</p>{% endif %}
+		</div>
+		{% endfor %}
+	{% endmacro %}
+
+	{% if _classes %}
+	<section>
+		<h2>Classes</h2>
+		{{ render_entity_list(_classes) }}
 	</section>
 	{% endif %}
 
 	{% if _structs %}
 	<section>
 		<h2>Structs</h2>
-		<ul class="entity-list">
-			{% for cls in _structs %}
-			<li class="entity{% if cls.is_internal %} internal{% endif %}">
-				<code>{{ render_qname_link(cls.qualified_name, cls.url, current_url)|safe }}</code>
-				{% if cls.doc.brief %}<span class="brief">— {{ cls.doc.brief }}</span>{% endif %}
-			</li>
-			{% endfor %}
-		</ul>
+		{{ render_entity_list(_structs) }}
 	</section>
 	{% endif %}
 
-	{% if group.enums %}
+	{% if _enums %}
 	<section>
 		<h2>Enums</h2>
-		<ul class="entity-list">
-			{% for qname in group.enums %}
-				{% if qname in site.enums %}
-				{% set enum = site.enums[qname] %}
-				<li class="entity{% if enum.is_internal %} internal{% endif %}">
-					<code>{{ render_qname_link(enum.qualified_name, enum.url, current_url)|safe }}</code>
-					{% if enum.doc.brief %}<span class="brief">— {{ enum.doc.brief }}</span>{% endif %}
-				</li>
-				{% endif %}
-			{% endfor %}
-		</ul>
+		{{ render_entity_list(_enums) }}
 	</section>
 	{% endif %}
 
-	{% if group.functions %}
+	{% if _functions %}
 	<section>
 		<h2>Free functions</h2>
-		{% for key in group.functions %}
-			{% if key in site.functions %}
-			{% set fn = site.functions[key] %}
-			<div id="{{ fn.anchor }}" class="member free-function{% if fn.is_internal %} internal{% endif %}">
-				<h3>{{ fn.name }}</h3>
-				<pre class="signature"><code>{{ fn.signature }}</code></pre>
-				{% if fn.doc.brief %}<p class="brief">{{ render_doc_inline(fn.doc.brief, current_url, fn.namespace)|safe }}</p>{% endif %}
-				{% if fn.doc.description %}<div class="description">{{ render_doc_md(fn.doc.description, current_url, fn.namespace)|safe }}</div>{% endif %}
-				{% if fn.doc.template_params %}
-					<section class="tparam-panel">
-						<h5 class="tparam-panel-title">Template parameters</h5>
-						<table class="tparam-table">
-							<tbody>
-							{% for p, desc in fn.doc.template_params %}
-								<tr><th scope="row"><code>{{ p }}</code></th><td>{{ render_doc_md(desc, current_url, fn.namespace)|safe }}</td></tr>
-							{% endfor %}
-							</tbody>
-						</table>
-					</section>
-				{% endif %}
-				{% if fn.doc.params %}
-					<dl class="params">
-					{% for p, desc in fn.doc.params %}<dt>{{ p }}</dt><dd>{{ render_doc_inline(desc, current_url, fn.namespace)|safe }}</dd>{% endfor %}
-					</dl>
-				{% endif %}
-				{% if fn.doc.returns %}<p class="returns"><strong>Returns:</strong> {{ render_doc_inline(fn.doc.returns, current_url, fn.namespace)|safe }}</p>{% endif %}
-			</div>
-			{% endif %}
-		{% endfor %}
+		{{ render_free_functions(_functions) }}
+	</section>
+	{% endif %}
+
+	{% if _internal_classes or _internal_structs or _internal_enums or _internal_functions %}
+	<section class="internal-section">
+		<h2>Internal</h2>
+		<p class="group-desc">Symbols intended for engine-internal use. Not part of the public API.</p>
+		{% if _internal_classes %}
+		<section>
+			<h3>Classes</h3>
+			{{ render_entity_list(_internal_classes) }}
+		</section>
+		{% endif %}
+		{% if _internal_structs %}
+		<section>
+			<h3>Structs</h3>
+			{{ render_entity_list(_internal_structs) }}
+		</section>
+		{% endif %}
+		{% if _internal_enums %}
+		<section>
+			<h3>Enums</h3>
+			{{ render_entity_list(_internal_enums) }}
+		</section>
+		{% endif %}
+		{% if _internal_functions %}
+		<section>
+			<h3>Free functions</h3>
+			{{ render_free_functions(_internal_functions) }}
+		</section>
+		{% endif %}
 	</section>
 	{% endif %}
 </article>

@@ -45,6 +45,8 @@ class Member:
 	is_static: bool = False
 	is_virtual: bool = False
 	is_const: bool = False
+	is_constructor: bool = False
+	is_operator: bool = False
 	template_params: Optional[str] = None
 	return_type: Optional[str] = None
 	param_list: list[tuple[str, str]] = field(default_factory=list)  # (type, name)
@@ -71,6 +73,7 @@ class Class:
 	namespace: str
 	group_names: list[str] = field(default_factory=list)
 	is_internal: bool = False
+	visibility: Visibility = "public"
 	members: list[Member] = field(default_factory=list)
 	doc: DocBlock = field(default_factory=DocBlock)
 	location: Optional[SourceLoc] = None
@@ -87,6 +90,7 @@ class Enum:
 	namespace: str = ""
 	group_names: list[str] = field(default_factory=list)
 	is_internal: bool = False
+	visibility: Visibility = "public"
 	doc: DocBlock = field(default_factory=DocBlock)
 	location: Optional[SourceLoc] = None
 	url: str = ""
@@ -195,6 +199,8 @@ class RawDecl:
 	is_static: bool = False
 	is_virtual: bool = False
 	is_const: bool = False
+	is_constructor: bool = False
+	is_operator: bool = False
 	parent_class_qname: Optional[str] = None  # for members
 	namespace: str = ""
 	group_stack: list[str] = field(default_factory=list)

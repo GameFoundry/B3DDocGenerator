@@ -262,12 +262,36 @@ def _resolve_b3d_refs(html_out: str, site: Site, current_url: str) -> str:
 	return _B3D_REF_RE.sub(fn_sub, html_out)
 
 
-# Identifier tokens to detect in rendered comment HTML. Two branches: qualified
-# names (must contain "::"), or unqualified Capital-case tokens ≥ 3 chars
-# (typical C++ type/class convention — avoids matching common English words
-# like "It", "If", "On", "The").
-_PROSE_TOKEN_RE = re.compile(
-	r"[A-Za-z_]\w*(?:::[A-Za-z_~]\w*)+|[A-Z]\w{2,}"
+# Identifier tokens to detect in rendered comment prose. Two regexes, one per
+# context:
+#
+#   * ``_PROSE_TEXT_TOKEN_RE`` — used in plain paragraph text. Requires either a
+#     qualified ``Foo::Bar`` name or an unqualified Capital-case token of ≥3
+#     chars. The capital-case heuristic avoids latching onto common English
+#     words like "It", "If", "On", "The" while still catching type references.
+#   * ``_PROSE_CODE_TOKEN_RE`` — used inside ``<code>`` spans (inline backticks
+#     and fenced code blocks). Matches any identifier, including lowercase
+#     method/field names. This is what lets ``setCursor`` resolve when written
+#     as ``setCursor``.
+#
+# Both regexes honor ``%`` as a Doxygen-style escape: ``%Foo`` links ``Foo`` and
+# drops the ``%``, while ``Foo%suffix`` links ``Foo`` and appends ``suffix`` as
+# plain text (so ``Material%s`` renders as ``Materials`` with ``Material``
+# hyperlinked). The leading ``(?<!…)`` / trailing ``(?!…)`` guards enforce
+# word boundaries against surrounding identifier chars so ``Cursor`` inside
+# ``setCursor`` is never matched as a standalone token.
+_PROSE_TEXT_TOKEN_RE = re.compile(
+	r"(?<![A-Za-z0-9_%])"
+	r"(?:"
+	r"%?[A-Za-z_]\w*(?:::[A-Za-z_~]\w*)+"
+	r"|%?[A-Z]\w{2,}(?:%[a-z]+)?"
+	r")"
+	r"(?![A-Za-z0-9_])"
+)
+_PROSE_CODE_TOKEN_RE = re.compile(
+	r"(?<![A-Za-z0-9_%])"
+	r"%?[A-Za-z_]\w*(?:::[A-Za-z_~]\w*)*(?:%[a-z]+)?"
+	r"(?![A-Za-z0-9_])"
 )
 
 # Tag splitter for a simple HTML tokenizer. Alternates between non-tag text
@@ -275,15 +299,34 @@ _PROSE_TOKEN_RE = re.compile(
 _TAG_SPLIT_RE = re.compile(r"(<[^>]*>)")
 
 
+def _split_pct_token(raw: str) -> tuple[str, str]:
+	"""Split a matched prose token into (resolvable_identifier, visible_suffix).
+
+	Handles the two ``%`` forms we accept: ``%Foo`` → (``Foo``, ``""``) and
+	``Foo%bar`` → (``Foo``, ``bar``). Plain tokens come back unchanged. The
+	caller linkifies the first element and appends the second as plain text.
+	"""
+	core = raw[1:] if raw.startswith("%") else raw
+	pct = core.find("%")
+	if pct >= 0:
+		return core[:pct], core[pct + 1 :]
+	return core, ""
+
+
 def _resolve_symbol_in_context(
-	site: Site, name: str, context_ns: str
+	site: Site, name: str, context_ns: str, class_context: str = ""
 ) -> "SymbolEntry | None":
-	"""Symbol lookup that tries increasingly-outer namespaces for unqualified
-	names. Qualified names (containing ``::``) skip the walk and fall through
-	to the plain ``resolve_symbol`` (which already handles the implicit
-	``b3d::`` prefix)."""
+	"""Symbol lookup that tries, in order: the current class's members
+	(so bare ``setCursor`` inside the ``Cursor`` class page resolves to
+	``Cursor::setCursor``), then increasingly-outer namespaces, then a plain
+	global lookup. Qualified names (containing ``::``) skip straight to the
+	plain resolver, which already handles the implicit ``b3d::`` prefix."""
 	if "::" in name:
 		return resolve_symbol(site, name)
+	if class_context:
+		entry = resolve_symbol(site, f"{class_context}::{name}")
+		if entry is not None:
+			return entry
 	if context_ns:
 		ns = context_ns
 		while ns:
@@ -298,19 +341,26 @@ def _resolve_symbol_in_context(
 
 
 def _linkify_prose_html(
-	html_out: str, site: Site, current_url: str, context_ns: str
+	html_out: str,
+	site: Site,
+	current_url: str,
+	context_ns: str,
+	class_context: str = "",
 ) -> str:
 	"""Walk rendered HTML and wrap resolvable identifier tokens in text nodes
-	with ``<a class="type-ref">``. Skips text inside existing anchors so we
-	never produce nested ``<a>`` elements."""
+	with ``<a class="type-ref">``. Tracks ``<a>`` depth to avoid producing
+	nested anchors, and ``<code>`` depth to switch between the capital-case
+	heuristic (plain prose) and the permissive identifier regex (code spans).
+	"""
 	if not html_out:
 		return html_out
 	parts = _TAG_SPLIT_RE.split(html_out)
 	anchor_depth = 0
+	code_depth = 0
 	out: list[str] = []
 	for i, part in enumerate(parts):
 		if i % 2 == 1:
-			# Tag token — pass through, track <a>/</a> depth.
+			# Tag token — pass through, track <a>/<code> depth.
 			out.append(part)
 			low = part.lower()
 			if low.startswith("<a ") or low == "<a>":
@@ -318,19 +368,27 @@ def _linkify_prose_html(
 			elif low.startswith("</a"):
 				if anchor_depth > 0:
 					anchor_depth -= 1
+			elif low.startswith("<code"):
+				if not low.endswith("/>"):
+					code_depth += 1
+			elif low.startswith("</code"):
+				if code_depth > 0:
+					code_depth -= 1
 			continue
 		if not part or anchor_depth > 0:
 			out.append(part)
 			continue
+		regex = _PROSE_CODE_TOKEN_RE if code_depth > 0 else _PROSE_TEXT_TOKEN_RE
 		# Text token: linkify identifier matches in-place.
 		last = 0
 		pieces: list[str] = []
-		for m in _PROSE_TOKEN_RE.finditer(part):
+		for m in regex.finditer(part):
 			start, end = m.span()
-			token = m.group(0)
-			if token in _NON_SYMBOL_TOKENS:
+			raw = m.group(0)
+			token, suffix = _split_pct_token(raw)
+			if not token or token in _NON_SYMBOL_TOKENS:
 				continue
-			entry = _resolve_symbol_in_context(site, token, context_ns)
+			entry = _resolve_symbol_in_context(site, token, context_ns, class_context)
 			if entry is None:
 				continue
 			if start > last:
@@ -340,6 +398,8 @@ def _linkify_prose_html(
 			pieces.append(
 				f'<a class="type-ref" href="{href}">{html.escape(display)}</a>'
 			)
+			if suffix:
+				pieces.append(html.escape(suffix))
 			last = end
 		if pieces:
 			pieces.append(part[last:])
@@ -406,7 +466,11 @@ def _strip_common_indent(text: str) -> str:
 
 
 def _render_inline_markdown(
-	text: str, site: Site, current_url: str, context_ns: str = ""
+	text: str,
+	site: Site,
+	current_url: str,
+	context_ns: str = "",
+	class_context: str = "",
 ) -> str:
 	"""Render a Markdown block (multi-paragraph description) to HTML, rewrite
 	``@b3d::`` references, and linkify bare identifiers in the prose."""
@@ -415,11 +479,15 @@ def _render_inline_markdown(
 	md = MarkdownIt("commonmark", {"html": False}).enable("table")
 	html_out = md.render(_strip_common_indent(text))
 	html_out = _resolve_b3d_refs(html_out, site, current_url)
-	return _linkify_prose_html(html_out, site, current_url, context_ns)
+	return _linkify_prose_html(html_out, site, current_url, context_ns, class_context)
 
 
 def _render_doc_inline(
-	text: str, site: Site, current_url: str, context_ns: str = ""
+	text: str,
+	site: Site,
+	current_url: str,
+	context_ns: str = "",
+	class_context: str = "",
 ) -> str:
 	"""Render a short Markdown fragment (brief, param description, return)
 	without wrapping it in a <p>, so it can sit inside existing prose."""
@@ -428,14 +496,28 @@ def _render_doc_inline(
 	md = MarkdownIt("commonmark", {"html": False})
 	html_out = md.renderInline(_strip_common_indent(text))
 	html_out = _resolve_b3d_refs(html_out, site, current_url)
-	return _linkify_prose_html(html_out, site, current_url, context_ns)
+	return _linkify_prose_html(html_out, site, current_url, context_ns, class_context)
 
 
 _VIS_ORDER = ("public", "internal", "protected", "private")
 
+# Order the section template iterates; keep in sync with the buckets produced
+# by ``_empty_vis_buckets`` and the template's section rendering.
+_MEMBER_SECTIONS = ("constructors", "methods", "fields", "operators")
+
 
 def _empty_vis_buckets() -> dict:
-	return {vis: {"methods": [], "fields": []} for vis in _VIS_ORDER}
+	return {vis: {sec: [] for sec in _MEMBER_SECTIONS} for vis in _VIS_ORDER}
+
+
+def _member_section(m) -> str:
+	if m.kind == "field":
+		return "fields"
+	if m.is_constructor:
+		return "constructors"
+	if m.is_operator:
+		return "operators"
+	return "methods"
 
 
 def _min_visibility(member_vis: str, inherit_access: str) -> str:
@@ -482,7 +564,7 @@ def _build_class_sections(cls: Class, site: Site) -> dict:
 	own = _empty_vis_buckets()
 	covered_method_names: set[str] = set()
 	for m in cls.members:
-		own[m.visibility]["fields" if m.kind == "field" else "methods"].append(m)
+		own[m.visibility][_member_section(m)].append(m)
 		if m.kind != "field":
 			covered_method_names.add(m.name)
 
@@ -496,6 +578,9 @@ def _build_class_sections(cls: Class, site: Site) -> dict:
 			# Private members of a base are never accessible.
 			if m.visibility == "private":
 				continue
+			# Base-class constructors are never inherited into a derived class.
+			if m.is_constructor:
+				continue
 			effective = _min_visibility(m.visibility, inherit_access)
 			if m.kind == "field":
 				own[effective]["fields"].append(m)
@@ -503,7 +588,7 @@ def _build_class_sections(cls: Class, site: Site) -> dict:
 				if m.name in covered_method_names:
 					continue
 				covered_method_names.add(m.name)
-				own[effective]["methods"].append(m)
+				own[effective][_member_section(m)].append(m)
 		# Recurse through transitive templated/struct bases only — a regular
 		# class base terminates the flattening chain.
 		for next_base_str in base_cls.bases:
@@ -535,11 +620,13 @@ def _build_class_sections(cls: Class, site: Site) -> dict:
 
 
 def _section_has_content(own_bucket: dict, inherited_list: list) -> bool:
-	if own_bucket["methods"] or own_bucket["fields"]:
-		return True
-	for entry in inherited_list:
-		if entry["methods"] or entry["fields"]:
+	for sec in _MEMBER_SECTIONS:
+		if own_bucket.get(sec):
 			return True
+	for entry in inherited_list:
+		for sec in _MEMBER_SECTIONS:
+			if entry.get(sec):
+				return True
 	return False
 
 
@@ -555,8 +642,8 @@ def render_site(
 
 	env.globals["url_for_group"] = url_for_group
 	env.globals["relative_link"] = relative_link
-	env.globals["render_doc_md"] = lambda text, current, ns="": _render_inline_markdown(text, site, current, ns)
-	env.globals["render_doc_inline"] = lambda text, current, ns="": _render_doc_inline(text, site, current, ns)
+	env.globals["render_doc_md"] = lambda text, current, ns="", cls_ctx="": _render_inline_markdown(text, site, current, ns, cls_ctx)
+	env.globals["render_doc_inline"] = lambda text, current, ns="", cls_ctx="": _render_doc_inline(text, site, current, ns, cls_ctx)
 	env.globals["render_signature"] = lambda sig, current: _linkify_signature(sig, site, current)
 	env.globals["render_signature_plain"] = lambda sig, current: _linkify_signature(
 		_rewrite_to_trailing_return(sig), site, current, link_types=False

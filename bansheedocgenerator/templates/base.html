@@ -9,16 +9,6 @@
 <title>{{ page_title }} — Banshee Engine</title>
 <link rel="stylesheet" href="{{ rel('static/css/site.css') }}">
 <link rel="stylesheet" href="{{ rel('static/vendor/highlight/github.min.css') }}">
-<script>
-(function() {
-	var key = "bansheedocgenerator.settings.v1";
-	var defaults = { showInternal: false };
-	var state;
-	try { state = JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { state = {}; }
-	state = Object.assign({}, defaults, state);
-	document.documentElement.classList.toggle("show-internal", !!state.showInternal);
-})();
-</script>
 </head>
 <body>
 <header class="site-header">
@@ -31,18 +21,7 @@
 		<input type="search" id="search-input" placeholder="Search…" autocomplete="off">
 		<div id="search-results" class="search-results" hidden></div>
 	</form>
-	<button class="settings-btn" aria-label="Settings" type="button">&#9881;</button>
 </header>
-
-<dialog id="settings-dialog" class="settings-dialog">
-	<form method="dialog">
-		<h2>Settings</h2>
-		<label><input type="checkbox" id="settings-show-internal"> Show internal, private and protected members</label>
-		<menu>
-			<button value="close">Close</button>
-		</menu>
-	</form>
-</dialog>
 
 <main class="site-main">
 {% block content %}{% endblock %}
@@ -59,7 +38,6 @@
 	window.BDG_BASE = {{ ('"' + rel('') + '"')|safe }};
 	window.BDG_SEARCH_JSON = {{ ('"' + rel('static/search.json') + '"')|safe }};
 </script>
-<script src="{{ rel('static/js/settings.js') }}"></script>
 <script src="{{ rel('static/js/search.js') }}"></script>
 <script src="{{ rel('static/js/nav.js') }}"></script>
 </body>

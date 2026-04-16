@@ -6,9 +6,10 @@
 	--c-accent: #0366d6;
 	--c-accent-hover: #0250a2;
 	--c-code-bg: #f6f8fa;
-	--c-internal: #b36b00;
-	--c-private: #8b5cf6;
-	--c-protected: #0a8;
+	--c-public: #16a34a;
+	--c-internal: #eab308;
+	--c-protected: #f97316;
+	--c-private: #dc2626;
 	--font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	--font-mono: "SF Mono", Menlo, Consolas, monospace;
 }
@@ -116,24 +117,6 @@ pre code.hljs {
 	margin-right: 6px;
 	text-transform: uppercase;
 }
-
-.settings-btn {
-	background: transparent;
-	border: 1px solid var(--c-border);
-	border-radius: 6px;
-	padding: 4px 10px;
-	font-size: 18px;
-	cursor: pointer;
-}
-
-.settings-dialog {
-	border: 1px solid var(--c-border);
-	border-radius: 10px;
-	padding: 24px;
-	max-width: 400px;
-}
-
-.settings-dialog label { display: block; padding: 12px 0; }
 
 .site-main {
 	max-width: 1280px;
@@ -280,8 +263,15 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 	color: var(--c-fg);
 	word-break: break-all;
 }
-.toc-section { margin: 14px 0; }
+.toc-section {
+	margin: 14px 0;
+	padding-left: 8px;
+	border-left: 3px solid var(--c-public);
+}
 .toc-section:first-of-type { margin-top: 0; }
+.toc-section.internal  { border-left-color: var(--c-internal); }
+.toc-section.protected { border-left-color: var(--c-protected); }
+.toc-section.private   { border-left-color: var(--c-private); }
 .toc-vis-header {
 	font-size: 12px;
 	margin: 0 0 4px 0;
@@ -290,6 +280,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 	color: var(--c-muted);
 	font-weight: 600;
 }
+.toc-section.public    > .toc-vis-header { color: var(--c-public); }
+.toc-section.internal  > .toc-vis-header { color: var(--c-internal); }
+.toc-section.protected > .toc-vis-header { color: var(--c-protected); }
+.toc-section.private   > .toc-vis-header { color: var(--c-private); }
 .toc-sub {
 	font-size: 11px;
 	color: var(--c-muted);
@@ -341,9 +335,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 	font-size: 22px;
 	margin: 0 0 4px 0;
 }
-.members.protected > h2::after { content: " (protected)"; color: var(--c-protected); font-size: 14px; font-weight: normal; }
-.members.private > h2::after { content: " (private)"; color: var(--c-private); font-size: 14px; font-weight: normal; }
-.members.internal > h2::after { content: " (internal)"; color: var(--c-internal); font-size: 14px; font-weight: normal; }
+.members.public > h2    { color: var(--c-public); }
+.members.internal > h2  { color: var(--c-internal); }
+.members.protected > h2 { color: var(--c-protected); }
+.members.private > h2   { color: var(--c-private); }
 
 .section-subhead {
 	font-size: 14px;
@@ -358,13 +353,13 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .member {
 	padding: 10px 14px 12px;
 	margin: 8px 0;
-	border-left: 3px solid var(--c-border);
+	border-left: 3px solid var(--c-public);
 	background: transparent;
 	scroll-margin-top: 70px;
 }
 .member.internal { border-left-color: var(--c-internal); }
-.member.private { border-left-color: var(--c-private); }
 .member.protected { border-left-color: var(--c-protected); }
+.member.private { border-left-color: var(--c-private); }
 .member-name {
 	margin: 0 0 4px 0;
 	font-family: var(--font-mono);
@@ -479,19 +474,15 @@ a.type-ref:hover { text-decoration: underline; }
 .manual-article h1 { border-bottom: 1px solid var(--c-border); padding-bottom: 8px; }
 .manual-article img { max-width: 100%; }
 
-/* Internal visibility toggle — hides protected, private, internal members
-   and any nav/entity entries marked internal unless "show-internal" is on. */
-html:not(.show-internal) .members.protected,
-html:not(.show-internal) .members.private,
-html:not(.show-internal) .members.internal,
-html:not(.show-internal) .toc-section.protected,
-html:not(.show-internal) .toc-section.private,
-html:not(.show-internal) .toc-section.internal,
-html:not(.show-internal) .nav-group.internal,
-html:not(.show-internal) .entity.internal,
-html:not(.show-internal) .inherited-members li.protected,
-html:not(.show-internal) .search-hit.internal {
-	display: none;
+/* Visual break between the public and internal halves of a merged group
+   page. Non-intrusive: a subtle divider + muted header tint. */
+.group-page .internal-section {
+	margin-top: 28px;
+	padding-top: 12px;
+	border-top: 1px dashed var(--c-border);
+}
+.group-page .internal-section > h2 {
+	color: var(--c-muted, #888);
 }
 
 table { border-collapse: collapse; margin: 16px 0; }

@@ -14,7 +14,8 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
-from .config import INTERNAL_MARKER
+from .config import INTERNAL_MARKER, PRIMARY_NAMESPACE
+from .group_resolver import internal_partner_name
 from .model import (
 	Class,
 	DocBlock,
@@ -29,6 +30,13 @@ from .model import (
 	SymbolEntry,
 )
 from .util import safe_anchor, safe_filename, warn
+
+
+UNCATEGORIZED_GROUP_NAME = "Uncategorized"
+UNCATEGORIZED_GROUP_TITLE = "Uncategorized"
+UNCATEGORIZED_GROUP_DESCRIPTION = (
+	"Symbols that have no ``@defgroup`` or ``@addtogroup`` scope assigned."
+)
 
 
 def build_ir(
@@ -74,6 +82,7 @@ def build_ir(
 			bases=d.bases,
 			namespace=d.namespace,
 			group_names=list(d.group_stack),
+			visibility=d.visibility or "public",
 			doc=d.doc or DocBlock(),
 			location=d.location,
 			url=url,
@@ -113,6 +122,8 @@ def build_ir(
 				is_static=raw.is_static,
 				is_virtual=raw.is_virtual,
 				is_const=raw.is_const,
+				is_constructor=raw.is_constructor,
+				is_operator=raw.is_operator,
 				template_params=raw.template_params,
 				return_type=raw.return_type,
 				param_list=raw.param_list,
@@ -134,6 +145,7 @@ def build_ir(
 			values=list(d.enum_values),
 			namespace=d.namespace,
 			group_names=list(d.group_stack),
+			visibility=d.visibility or "public",
 			doc=d.doc or DocBlock(),
 			location=d.location,
 			url=url,
@@ -149,7 +161,7 @@ def build_ir(
 	for d in function_raws:
 		idx = name_counts[d.qualified_name]
 		name_counts[d.qualified_name] += 1
-		group_name = d.group_stack[-1] if d.group_stack else "_ungrouped"
+		group_name = d.group_stack[-1] if d.group_stack else UNCATEGORIZED_GROUP_NAME
 		anchor = f"fn-{safe_anchor(d.name)}"
 		if idx > 0:
 			anchor += f"-{idx}"
@@ -197,6 +209,17 @@ def build_ir(
 			if key not in g.functions:
 				g.functions.append(key)
 
+	# Nested classes/enums whose C++ access level is not public are treated
+	# as internal in the group listings (they still have their own pages —
+	# this only affects which section they show up in on the enclosing
+	# group page, and whether search surfaces them with internals off).
+	_mark_nested_nonpublic_internal(site)
+
+	# Any decl that reached the IR without a @defgroup / @addtogroup scope
+	# would otherwise be invisible from the nav tree. Park those under a
+	# synthetic "Uncategorized" root group so every symbol is reachable.
+	_assign_uncategorized(site)
+
 	# Ensure every referenced group has a URL (via the render phase; here we
 	# just build root_group_order from groups that have no parent).
 	if not site.root_group_order:
@@ -207,6 +230,11 @@ def build_ir(
 
 	# Resolve @copydoc (max 3 hops)
 	_resolve_copydoc(site)
+
+	# Fold "Category-Internal" groups into their "Category" partners so the
+	# public and internal entries for the same area render on a single page,
+	# with the internal ones toggle-hidden via their is_internal flag.
+	_merge_internal_groups(site)
 
 	# Build symbol index — required by override-doc resolution below
 	# (it needs to resolve base class names against the index).
@@ -276,6 +304,138 @@ def _resolve_copydoc(site: Site) -> None:
 		resolve(enum.doc, 0)
 	for fn in site.functions.values():
 		resolve(fn.doc, 0)
+
+
+def _mark_nested_nonpublic_internal(site: Site) -> None:
+	"""Any class/struct/enum nested inside another class carries a C++ access
+	specifier (public/protected/private). Non-public nested types should not
+	clutter the public group listings, so we fold them into the same
+	``is_internal`` bucket as ``@name Internal`` blocks and internal groups.
+	Sub-namespaces (``b3d::detail``, ``b3d::render``, …) are NOT classes and
+	must never trigger this — the guard is ``parent resolves to a class``."""
+	for cls in site.classes.values():
+		if cls.is_internal:
+			continue
+		if "::" not in cls.qualified_name:
+			continue
+		parent_qname = cls.qualified_name.rsplit("::", 1)[0]
+		if parent_qname not in site.classes:
+			continue
+		if cls.visibility and cls.visibility != "public":
+			cls.is_internal = True
+
+	for enum in site.enums.values():
+		if enum.is_internal:
+			continue
+		if "::" not in enum.qualified_name:
+			continue
+		parent_qname = enum.qualified_name.rsplit("::", 1)[0]
+		if parent_qname not in site.classes:
+			continue
+		if enum.visibility and enum.visibility != "public":
+			enum.is_internal = True
+
+
+def _assign_uncategorized(site: Site) -> None:
+	"""Collect every class/enum/free-function with an empty group_names and
+	park them in a synthetic ``Uncategorized`` root group. The group is only
+	materialized if at least one orphan exists; otherwise nothing happens.
+	Symbols outside the ``b3d`` namespace (third-party helpers, ``std``, etc.)
+	are ignored — we only document engine-owned code."""
+	def _in_b3d(ns: str) -> bool:
+		return ns == PRIMARY_NAMESPACE or ns.startswith(PRIMARY_NAMESPACE + "::")
+
+	orphan_classes = [q for q, c in site.classes.items() if not c.group_names and _in_b3d(c.namespace)]
+	orphan_enums = [q for q, e in site.enums.items() if not e.group_names and _in_b3d(e.namespace)]
+	orphan_functions = [k for k, f in site.functions.items() if not f.group_names and _in_b3d(f.namespace)]
+	if not orphan_classes and not orphan_enums and not orphan_functions:
+		return
+
+	g = site.groups.get(UNCATEGORIZED_GROUP_NAME)
+	if g is None:
+		g = Group(
+			name=UNCATEGORIZED_GROUP_NAME,
+			title=UNCATEGORIZED_GROUP_TITLE,
+			description=UNCATEGORIZED_GROUP_DESCRIPTION,
+		)
+		site.groups[UNCATEGORIZED_GROUP_NAME] = g
+	if UNCATEGORIZED_GROUP_NAME not in site.root_group_order:
+		site.root_group_order.append(UNCATEGORIZED_GROUP_NAME)
+
+	for qname in orphan_classes:
+		cls = site.classes[qname]
+		cls.group_names.append(UNCATEGORIZED_GROUP_NAME)
+		if qname not in g.classes:
+			g.classes.append(qname)
+	for qname in orphan_enums:
+		enum = site.enums[qname]
+		enum.group_names.append(UNCATEGORIZED_GROUP_NAME)
+		if qname not in g.enums:
+			g.enums.append(qname)
+	for key in orphan_functions:
+		fn = site.functions[key]
+		fn.group_names.append(UNCATEGORIZED_GROUP_NAME)
+		if key not in g.functions:
+			g.functions.append(key)
+
+
+def _merge_internal_groups(site: Site) -> None:
+	"""Fold each internal group with a public partner into that partner.
+
+	Classes, enums and free functions are appended to the partner's lists
+	(de-duped). Free-function URLs are rewritten so anchor links on the
+	partner page resolve correctly. Entity ``group_names`` entries are
+	substituted so breadcrumbs point at the partner group. The merged internal
+	group is then removed from its parent's children list, from
+	``site.root_group_order``, and finally from ``site.groups`` so no standalone
+	page is emitted for it. Internal groups without a partner (e.g.
+	``Renderer-Internal``) are left untouched."""
+	pairs: list[tuple[str, str]] = []
+	for name, g in list(site.groups.items()):
+		if not g.is_internal:
+			continue
+		partner_name = internal_partner_name(name, site.groups)
+		if partner_name is None:
+			continue
+		pairs.append((name, partner_name))
+
+	def _rename_in(group_names: list[str], old: str, new: str) -> None:
+		for i, n in enumerate(group_names):
+			if n == old:
+				group_names[i] = new
+
+	for internal_name, partner_name in pairs:
+		internal = site.groups[internal_name]
+		partner = site.groups[partner_name]
+
+		for qname in internal.classes:
+			if qname not in partner.classes:
+				partner.classes.append(qname)
+			cls = site.classes.get(qname)
+			if cls is not None:
+				_rename_in(cls.group_names, internal_name, partner_name)
+		for qname in internal.enums:
+			if qname not in partner.enums:
+				partner.enums.append(qname)
+			enum = site.enums.get(qname)
+			if enum is not None:
+				_rename_in(enum.group_names, internal_name, partner_name)
+		for fkey in internal.functions:
+			if fkey not in partner.functions:
+				partner.functions.append(fkey)
+			fn = site.functions.get(fkey)
+			if fn is None:
+				continue
+			_rename_in(fn.group_names, internal_name, partner_name)
+			fn.url = f"api/groups/{safe_filename(partner_name)}.html#{fn.anchor}"
+
+		if internal.parent and internal.parent in site.groups:
+			parent = site.groups[internal.parent]
+			if internal_name in parent.children:
+				parent.children.remove(internal_name)
+		if internal_name in site.root_group_order:
+			site.root_group_order.remove(internal_name)
+		del site.groups[internal_name]
 
 
 _BASE_ACCESS_RE = re.compile(r"^\s*(public|protected|private|virtual)\s+")

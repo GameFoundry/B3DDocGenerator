@@ -19,17 +19,12 @@
 		});
 	}
 
-	function showInternal() {
-		return document.documentElement.classList.contains("show-internal");
-	}
-
 	function render(matches) {
 		if (!matches.length) { results.hidden = true; results.innerHTML = ""; return; }
 		var html = "";
 		var shown = 0;
 		for (var i = 0; i < matches.length && shown < 30; i++) {
 			var m = matches[i];
-			if (m.isInternal && !showInternal()) continue;
 			var cls = "search-hit" + (m.isInternal ? " internal" : "");
 			html += '<a class="' + cls + '" href="' + window.BDG_BASE + m.url + '">';
 			html += '<span class="kind">' + m.kind + '</span>';
