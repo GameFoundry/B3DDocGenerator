@@ -87,7 +87,11 @@ def build_ir(
 			location=d.location,
 			url=url,
 		)
-		cls.is_internal = _is_internal(cls.group_names, groups) or INTERNAL_MARKER in qname.lower()
+		cls.is_internal = (
+			_is_internal(cls.group_names, groups)
+			or INTERNAL_MARKER in qname.lower()
+			or d.is_internal_name_block
+		)
 		site.classes[qname] = cls
 
 	# Attach members
@@ -153,6 +157,7 @@ def build_ir(
 		enum.is_internal = (
 			_is_internal(enum.group_names, groups)
 			or INTERNAL_MARKER in d.qualified_name.lower()
+			or d.is_internal_name_block
 		)
 		site.enums[d.qualified_name] = enum
 
@@ -181,7 +186,7 @@ def build_ir(
 			anchor=anchor,
 			overload_index=idx,
 		)
-		fn.is_internal = _is_internal(fn.group_names, groups)
+		fn.is_internal = _is_internal(fn.group_names, groups) or d.is_internal_name_block
 		# Differentiate overloads in the qualified_name key
 		key = d.qualified_name if idx == 0 else f"{d.qualified_name}#{idx}"
 		site.functions[key] = fn

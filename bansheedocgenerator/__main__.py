@@ -146,7 +146,7 @@ def _attach_scope_info(
 				raw.group_stack = stack
 
 		ranges = internal_ranges_by_file.get(file_key)
-		if ranges and raw.kind in ("method", "field"):
+		if ranges:
 			for start, end in ranges:
 				if start <= line <= end:
 					raw.is_internal_name_block = True

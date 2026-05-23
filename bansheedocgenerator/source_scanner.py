@@ -244,20 +244,16 @@ class _FileScanner:
 			# a trailing ``@}`` if anyone writes it.
 
 		if has_close and not has_open:
-			# Prefer to close the innermost internal frame, matching the old
-			# cpp_parser precedence rule.
-			if self.scope_stack and self.scope_stack[-1][0] == "internal":
-				_, start = self.scope_stack.pop()
-				self.internal_ranges.append((start, line_no))
-			elif self.scope_stack:
-				# Walk the stack to find the nearest group to pop, leaving any
-				# internal frames deeper in place (shouldn't happen in practice
-				# since internal frames are always innermost, but guard anyway).
-				for idx in range(len(self.scope_stack) - 1, -1, -1):
-					if self.scope_stack[idx][0] == "group":
-						_, name, start = self.scope_stack.pop(idx)
-						self.group_spans.append((name, start, line_no))
-						break
+			# Close exactly one scope — the innermost. A single @} matches a
+			# single @{, whether it opened an internal (@name) or a group
+			# (@addtogroup / @defgroup) frame. Dangling frames get handled by
+			# the EOF flush in ``scan``.
+			if self.scope_stack:
+				top = self.scope_stack.pop()
+				if top[0] == "internal":
+					self.internal_ranges.append((top[1], line_no))
+				elif top[0] == "group":
+					self.group_spans.append((top[1], top[2], line_no))
 
 	def _close_open_internal(self, line_no: int) -> None:
 		for idx in range(len(self.scope_stack) - 1, -1, -1):
